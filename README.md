@@ -1,20 +1,35 @@
-# Рыжик: Тайна загородного дома
+# Рыжик: Тайна загородного дома — v2
 
-Готовый HTML5 canvas-проект для GitHub Pages и Telegram WebApp.
+HTML5 canvas game для GitHub Pages и Telegram WebApp.
 
-## Запуск
-Открой `index.html` в браузере или загрузи файлы в GitHub Pages.
+## Что добавлено в v2
+- Более логичная цепочка квестов
+- 3 мини-игры: рыбалка, светлячки, мяу-концерт
+- Экран улучшений кошачьего уголка
+- Прогресс квестов
+- Больше деталей на карте
+- Улучшенные эффекты вечера, ночи, дождя, светлячков
+- Сохранение v2 в localStorage
 
-## GitHub Pages
-1. Создай репозиторий `ryzhik-cat-game`.
-2. Загрузи `index.html`, `style.css`, `game.js`, `manifest.json` в корень.
-3. Settings → Pages → Deploy from branch → main / root.
-4. Получишь ссылку вида `https://username.github.io/ryzhik-cat-game/`.
+## Файлы
+- `index.html`
+- `style.css`
+- `game.js`
+- `manifest.json`
+- `README.md`
 
-## Telegram WebApp
-В BotFather укажи домен через `/setdomain`, например `https://username.github.io`.
+## Как обновить GitHub Pages
+1. Распакуй ZIP.
+2. Зайди в репозиторий игры.
+3. Загрузи файлы поверх старых.
+4. Нажми Commit changes.
+5. Через 30–60 секунд GitHub Pages обновится.
+
+## Telegram Bot WebApp
+Ссылка остаётся та же, если репозиторий и Pages URL не менялись.
 
 Пример Python-бота:
+
 ```python
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
@@ -30,6 +45,3 @@ app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.run_polling()
 ```
-
-## Управление
-Телефон: виртуальный джойстик и кнопки. ПК: WASD/стрелки, E, Space, I, M, Q, Esc.

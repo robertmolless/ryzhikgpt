@@ -3,7 +3,7 @@
   "short_name": "Рыжик",
   "start_url": "./index.html",
   "display": "fullscreen",
-  "background_color": "#142414",
+  "background_color": "#162315",
   "theme_color": "#ffb84a",
   "orientation": "any",
   "description": "Cozy HTML5 игра про доброго рыжего кота для Telegram WebApp."

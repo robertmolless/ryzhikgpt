@@ -1,15 +1,406 @@
 (() => {
 'use strict';
-const $=id=>document.getElementById(id), clamp=(v,a,b)=>Math.max(a,Math.min(b,v)), rnd=a=>a[Math.floor(Math.random()*a.length)], D=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
-class TGB{constructor(){this.tg=window.Telegram?.WebApp||null}init(){if(!this.tg)return;this.tg.ready();this.tg.expand();this.tg.BackButton.onClick(()=>game.ui.menu(true));}vib(){navigator.vibrate?.(35)}}
-class Audio{constructor(){this.ctx=null}tone(f=440,d=.08,t='sine'){this.ctx ||= new (window.AudioContext||window.webkitAudioContext)();let o=this.ctx.createOscillator(),g=this.ctx.createGain();o.type=t;o.frequency.value=f;g.gain.value=.045;o.connect(g);g.connect(this.ctx.destination);o.start();g.gain.exponentialRampToValueAtTime(.001,this.ctx.currentTime+d);o.stop(this.ctx.currentTime+d)}meow(){this.tone(650,.07);setTimeout(()=>this.tone(470,.13,'triangle'),65)}ok(){this.tone(880,.08,'triangle')}quest(){this.tone(523,.1);setTimeout(()=>this.tone(784,.16),120)}}
-class Input{constructor(){this.k={};addEventListener('keydown',e=>{this.k[e.key.toLowerCase()]=1});addEventListener('keyup',e=>{this.k[e.key.toLowerCase()]=0})}vec(){let x=0,y=0,k=this.k;if(k.a||k.arrowleft)x--;if(k.d||k.arrowright)x++;if(k.w||k.arrowup)y--;if(k.s||k.arrowdown)y++;let l=Math.hypot(x,y)||1;return{x:x/l,y:y/l}}}
-class Mobile{constructor(){this.v={x:0,y:0};this.root=$('controls');this.zone=$('stickZone');this.stick=$('stick');this.active=false;this.pid=null;this.bind()}show(){this.root.classList.remove('hidden')}bind(){let mv=e=>{if(!this.active||e.pointerId!==this.pid)return;let r=this.zone.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2,dx=e.clientX-cx,dy=e.clientY-cy,m=r.width*.33,l=Math.hypot(dx,dy);if(l>m){dx=dx/l*m;dy=dy/l*m}this.v={x:dx/m,y:dy/m};this.stick.style.transform=`translate(${dx}px,${dy}px)`};this.zone.onpointerdown=e=>{this.active=true;this.pid=e.pointerId;this.zone.setPointerCapture(e.pointerId);mv(e)};this.zone.onpointermove=mv;this.zone.onpointerup=this.zone.onpointercancel=()=>{this.active=false;this.v={x:0,y:0};this.stick.style.transform='translate(0,0)'};$('btnAction').onclick=()=>game.interact();$('btnMeow').onclick=()=>game.meow();$('btnInv').onclick=()=>game.ui.inv();$('btnMap').onclick=()=>game.ui.map();$('btnQuest').onclick=()=>game.ui.quests();$('btnPause').onclick=()=>game.ui.menu(true)}}
-class Player{constructor(){this.x=820;this.y=780;this.dir=1;this.walk=0;this.meow=0;this.s={satiety:100,energy:100,mood:100,fame:0}}update(dt,v){let l=Math.hypot(v.x,v.y),sp=170*(this.s.energy<25?.65:1);if(l>.05){this.x+=v.x*sp*dt;this.y+=v.y*sp*dt;this.dir=v.x<0?-1:v.x>0?1:this.dir;this.walk+=dt*10}this.x=clamp(this.x,80,2200);this.y=clamp(this.y,120,1700);this.meow=Math.max(0,this.meow-dt);this.s.satiety=clamp(this.s.satiety-dt*.22,0,100);this.s.energy=clamp(this.s.energy-dt*.12+(l<.05?dt*.35:0),0,100);this.s.mood=clamp(this.s.mood+(this.s.satiety<25?-dt*.35:dt*.04),0,100)}}
-class World{constructor(){this.w=2400;this.h=1800;this.day=1;this.time='утро';this.weather=rnd(['солнце','облачно','дождь','ветер','туман','звёздная ночь']);this.clock=0;this.fire=Array.from({length:45},()=>({x:1740+Math.random()*420,y:240+Math.random()*280,a:Math.random()*6}));this.items=[['bowl','миска',760,710,'🥣','q1'],['cassette','старая кассета',430,1190,'📼','q2'],['pick','медиатор',1540,1320,'🎸','q3'],['stickers','наклейки',1180,930,'⭐','q5'],['moonbell','лунный колокольчик',770,1250,'🔔','q6','night'],['leaf','редкий лист',1980,610,'🍃','q7'],['pages','страницы дневника',1030,330,'📜','q8'],['parts','детали фонаря',520,1230,'🔩','q9'],['button','пуговица',650,980,'🔘','q10'],['sunbell','солнечный колокольчик',460,320,'🌞','q20']].map(a=>({id:a[0],name:a[1],x:a[2],y:a[3],emoji:a[4],quest:a[5],night:a[6]}));this.zones=[['Двор',600,600,650,500],['Крыльцо',910,410,360,180],['Сад',1350,520,520,420],['Сарай',300,1080,380,260],['Старый забор',1700,1040,430,260],['Пруд',1460,1230,550,360],['Колодец',690,1160,230,230],['Лесная тропа',1880,500,330,520],['Поляна',1780,210,500,320],['Теплица',300,230,360,260],['Кошачий уголок',1030,780,260,200],['Чердак',960,300,160,80],['Подвал',840,560,180,80],['Крыша',880,250,410,120],['Тайная тропа',440,640,210,500]].map(z=>({n:z[0],x:z[1],y:z[2],w:z[3],h:z[4]}))}update(dt){this.clock+=dt;if(this.clock>55){this.clock=0;let a=['утро','день','вечер','ночь'],i=a.indexOf(this.time);this.time=a[(i+1)%4];if(this.time==='утро')this.day++;game.toast('Событие: '+rnd(['новая коробка','дождливый вечер','светлячки','музыка на крыльце','ночной туман']))}this.fire.forEach(f=>f.a+=dt*2)}zone(p){return this.zones.find(z=>p.x>z.x&&p.x<z.x+z.w&&p.y>z.y&&p.y<z.y+z.h)?.n||'Двор'}}
-class Quests{constructor(){this.q=[['q1','Миска Рыжика','Найди миску у крыльца','bowl'],['q2','Старая кассета','Верни Лёхе кассету','cassette','Лёха'],['q3','Пропавший медиатор','Найди медиатор у пруда','pick','Игорь'],['q4','Фото со светлячками','Поговори с Настей ночью','', 'Настя'],['q5','Потерянные наклейки','Собери наклейки для Лизы','stickers','Лиза'],['q6','Колокольчик луны','Найди колокольчик ночью','moonbell','Маг'],['q7','Лесная тропа','Принеси Соне редкий лист','leaf','Соня'],['q8','Странные записи','Найди страницы Нэны','pages','Нэна'],['q9','Сломанный фонарик','Принеси детали Кристине','parts','Кристина'],['q10','Коробка сокровищ','Принеси пуговицу Дане','button','Даня'],['q11','Старый забор','Помоги Прохору у забора','', 'Прохор'],['q12','Первый уютный уголок','Осмотри кошачий уголок'],['q13','Прудовая мелодия','Встреться с Игорем вечером'],['q14','Ночная прогулка','Встреться с Магом ночью'],['q15','Тайна чердака','Осмотри чердак'],['q16','Подвальная находка','Осмотри подвал'],['q17','Кошачья крыша','Заберись на крышу'],['q18','Вечер у костра','Собери друзей'],['q19','Ключ от теплицы','Получи доверие друзей'],['q20','Солнечный колокольчик','Найди колокольчик в теплице','sunbell']].map(x=>({id:x[0],title:x[1],hint:x[2],item:x[3],npc:x[4],done:false}))}active(){return this.q.find(x=>!x.done)||this.q.at(-1)}done(id){let q=this.q.find(x=>x.id===id);if(q&&!q.done){q.done=true;game.p.s.fame+=5;game.audio.quest();game.toast('Квест выполнен: '+q.title)}}}
-class UI{constructor(){this.bind()}bind(){$('newGame').onclick=()=>{localStorage.removeItem('ryzhik-save');game.start()};$('continueGame').onclick=()=>{game.start(true)};$('about').onclick=()=>this.modal('Об игре','<p>Cozy-игра про Рыжика, 10 друзей и тайну теплицы.</p>');$('closeModal').onclick=()=>this.close();$('dialogue').onclick=()=>this.closeDia()}update(){let s=game.p.s;$('satiety').textContent=s.satiety|0;$('energy').textContent=s.energy|0;$('mood').textContent=s.mood|0;$('fame').textContent=s.fame|0;$('timeWeather').textContent=`${game.w.time} • ${game.w.weather} • ${game.w.zone(game.p)}`;let q=game.quests.active();$('questTitle').textContent=q.title;$('questHint').textContent=q.hint}menu(p){$('menu').classList.remove('hidden');if(p)game.paused=true}hideMenu(){$('menu').classList.add('hidden')}modal(t,h){$('modalTitle').textContent=t;$('modalContent').innerHTML=h;$('modal').classList.remove('hidden');game.paused=true}close(){$('modal').classList.add('hidden');game.paused=false}inv(){this.modal('🎒 Инвентарь',game.inv.length?'<ul>'+game.inv.map(i=>`<li>${i}</li>`).join('')+'</ul>':'<p>Пока пусто.</p>')}quests(){this.modal('📜 Квесты','<ul>'+game.quests.q.map(q=>`<li>${q.done?'✅':'⬜'} <b>${q.title}</b><br><small>${q.hint}</small></li>`).join('')+'</ul>')}map(){this.modal('🗺️ Карта',`<p>Сейчас: <b>${game.w.zone(game.p)}</b></p><ul>`+game.w.zones.map(z=>`<li>${z.n}</li>`).join('')+'</ul>')}dia(n,t){$('speaker').textContent=n.name;$('dialogueText').textContent=t;$('portrait').style.background=n.color;$('dialogue').classList.remove('hidden');game.paused=true}closeDia(){$('dialogue').classList.add('hidden');game.paused=false}}
-class Draw{constructor(c){this.c=c;this.x=c.getContext('2d');this.resize();addEventListener('resize',()=>this.resize())}resize(){this.c.width=innerWidth*devicePixelRatio;this.c.height=innerHeight*devicePixelRatio;this.x.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0)}render(){let c=this.x,p=game.p,cam={x:p.x-innerWidth/2,y:p.y-innerHeight/2};c.clearRect(0,0,innerWidth,innerHeight);c.save();c.translate(-cam.x,-cam.y);this.grass(c);this.world(c);game.w.items.forEach(it=>this.item(c,it));game.npcs.forEach(n=>this.npc(c,n));this.cat(c,p);this.fire(c);c.restore();this.light(c);this.mini(c)}grass(c){c.fillStyle='#7fbd62';c.fillRect(0,0,game.w.w,game.w.h);for(let i=0;i<650;i++){let x=i*137%game.w.w,y=i*277%game.w.h;c.fillStyle=i%3?'#74ad59':'#94cf75';c.fillRect(x,y,3,10)}}rr(c,x,y,w,h,r){c.beginPath();c.roundRect(x,y,w,h,r);c.fill();c.stroke()}world(c){this.house(c,820,250);this.barn(c,300,1080);this.green(c,300,230);this.pond(c,1460,1230);this.fence(c,1680,1040);this.trees(c);this.flowers(c);c.fillStyle='#8a7667';c.beginPath();c.arc(750,1220,55,0,7);c.fill();c.stroke();c.fillStyle='#ffe0a0';c.strokeStyle='#86511f';c.lineWidth=4;this.rr(c,1030,780,260,190,24);c.font='42px serif';c.fillText('🐾',1140,885)}house(c,x,y){c.save();c.shadowColor='#0005';c.shadowBlur=20;c.shadowOffsetY=16;c.fillStyle='#a85c36';c.strokeStyle='#5b2b1b';c.lineWidth=5;this.rr(c,x,y+130,420,280,18);c.fillStyle='#73351f';c.beginPath();c.moveTo(x-30,y+145);c.lineTo(x+210,y);c.lineTo(x+450,y+145);c.closePath();c.fill();c.stroke();c.fillStyle='#ffe19b';for(let i=0;i<3;i++){c.fillRect(x+70+i*120,y+190,58,70);c.strokeRect(x+70+i*120,y+190,58,70)}c.fillStyle='#5d3724';c.fillRect(x+180,y+280,80,130);c.restore()}barn(c,x,y){c.fillStyle='#8f3f2d';c.strokeStyle='#522';c.lineWidth=4;this.rr(c,x,y,360,250,14);c.fillStyle='#c85d42';c.fillRect(x+130,y+90,100,160);c.strokeRect(x+130,y+90,100,160)}green(c,x,y){c.fillStyle='#9de0bf88';c.strokeStyle='#3b7661';c.lineWidth=5;this.rr(c,x,y,330,230,28);for(let i=0;i<5;i++){c.beginPath();c.moveTo(x+i*70,y);c.lineTo(x+i*70,y+230);c.stroke()}}pond(c,x,y){c.save();c.fillStyle='#4fa8c8';c.shadowColor='#b9ffff';c.shadowBlur=18;c.beginPath();c.ellipse(x+250,y+160,260,150,0,0,7);c.fill();c.strokeStyle='#2c6d82';c.stroke();c.restore()}fence(c,x,y){c.fillStyle='#8b5b33';for(let i=0;i<14;i++)c.fillRect(x+i*34,y+(i%2)*8,18,180);c.fillRect(x-10,y+60,500,18);c.fillRect(x-10,y+130,500,18)}trees(c){for(let i=0;i<28;i++){let x=120+i*311%2150,y=120+i*197%1550;c.fillStyle='#6b3e22';c.fillRect(x,y+50,28,70);c.fillStyle=i%2?'#3f8f4a':'#4da65a';c.beginPath();c.ellipse(x+14,y+45,62,54,0,0,7);c.fill()}}flowers(c){for(let i=0;i<120;i++){let x=90+i*173%2200,y=180+i*83%1500;c.fillStyle=['#ff7aa8','#ffe66e','#f66','#b87cff'][i%4];c.beginPath();c.arc(x,y,4,0,7);c.fill()}}item(c,it){if(game.inv.includes(it.name))return;if(it.night&&game.w.time!=='ночь')return;c.font='30px serif';c.fillText(it.emoji,it.x,it.y)}npc(c,n){if(n.times&&!n.times.includes(game.w.time))return;c.save();c.translate(n.x,n.y);c.fillStyle='#0004';c.beginPath();c.ellipse(0,38,28,10,0,0,7);c.fill();c.fillStyle=n.color;c.fillRect(-20,-18,40,58);c.fillStyle='#f0ba8e';c.beginPath();c.arc(0,-38,23,0,7);c.fill();c.fillStyle=n.hair;c.beginPath();c.arc(0,-50,25,Math.PI,0);c.fill();if(n.hat){c.fillStyle='#2b1b35';c.beginPath();c.moveTo(-32,-58);c.lineTo(0,-102);c.lineTo(32,-58);c.closePath();c.fill()}if(n.glasses){c.strokeStyle='#f33';c.lineWidth=3;c.strokeRect(-18,-43,14,10);c.strokeRect(4,-43,14,10)}if(n.tattoo){c.strokeStyle='#28314b';c.lineWidth=2;c.beginPath();c.moveTo(-27,-5);c.lineTo(-37,26);c.moveTo(27,-5);c.lineTo(37,26);c.stroke()}c.fillStyle='#111';c.fillRect(-8,-37,4,4);c.fillRect(8,-37,4,4);c.fillStyle='#fff';c.font='14px system-ui';c.textAlign='center';c.fillText(n.name,0,66);c.restore()}cat(c,p){c.save();c.translate(p.x,p.y);c.scale(p.dir,1);let w=Math.sin(p.walk)*4;c.fillStyle='#0004';c.beginPath();c.ellipse(0,24,34,12,0,0,7);c.fill();c.fillStyle='#f1842d';c.strokeStyle='#7a3b16';c.lineWidth=3;c.beginPath();c.ellipse(0,0,35,24,0,0,7);c.fill();c.stroke();c.beginPath();c.arc(28,-18,24,0,7);c.fill();c.stroke();c.beginPath();c.moveTo(12,-36);c.lineTo(18,-62);c.lineTo(30,-36);c.moveTo(36,-36);c.lineTo(50,-60);c.lineTo(52,-30);c.fill();c.stroke();c.strokeStyle='#7a3b16';c.lineWidth=8;c.beginPath();c.moveTo(-30,-2);c.quadraticCurveTo(-62,-38,-34,-54+w);c.stroke();c.fillStyle='#6cff93';c.beginPath();c.arc(22,-21,4,0,7);c.arc(38,-21,4,0,7);c.fill();c.strokeStyle='#7a3b16';c.lineWidth=2;for(let i=0;i<3;i++){c.beginPath();c.moveTo(8+i*10,-4);c.lineTo(18+i*8,5);c.stroke()}if(p.meow>0){c.fillStyle='#fff';c.font='22px system-ui';c.fillText('Мяу!',44,-54)}c.restore()}fire(c){if(!['вечер','ночь'].includes(game.w.time))return;game.w.fire.forEach(f=>{c.fillStyle=`rgba(255,230,120,${.4+.4*Math.sin(f.a)})`;c.beginPath();c.arc(f.x,f.y,3+Math.sin(f.a)*2,0,7);c.fill()})}light(c){if(game.w.time==='вечер'){c.fillStyle='rgba(255,130,45,.14)';c.fillRect(0,0,innerWidth,innerHeight)}if(game.w.time==='ночь'){c.fillStyle='rgba(20,35,90,.35)';c.fillRect(0,0,innerWidth,innerHeight)}if(game.w.weather==='туман'){c.fillStyle='rgba(230,240,230,.18)';c.fillRect(0,0,innerWidth,innerHeight)}if(game.w.weather==='дождь'){c.strokeStyle='rgba(190,220,255,.45)';for(let i=0;i<90;i++){let x=(i*47+performance.now()/8)%innerWidth,y=(i*91+performance.now()/5)%innerHeight;c.beginPath();c.moveTo(x,y);c.lineTo(x-8,y+18);c.stroke()}}}mini(c){c.save();c.globalAlpha=.86;c.fillStyle='#17110ccc';c.fillRect(innerWidth-118,82,100,76);c.fillStyle='#80bd63';c.fillRect(innerWidth-112,88,88,64);c.fillStyle='#f1842d';c.beginPath();c.arc(innerWidth-112+game.p.x/game.w.w*88,88+game.p.y/game.w.h*64,4,0,7);c.fill();c.restore()}}
-class Game{constructor(){window.game=this;this.tg=new TGB();this.tg.init();this.audio=new Audio();this.input=new Input();this.mobile=new Mobile();this.w=new World();this.p=new Player();this.quests=new Quests();this.inv=[];this.ui=new UI();this.draw=new Draw($('game'));this.npcs=this.makeNPC();this.paused=true;this.last=performance.now();requestAnimationFrame(t=>this.loop(t))}makeNPC(){return[{name:'Лёха',x:970,y:620,color:'#e9dcc5',hair:'#f2d77b',times:['утро','день','вечер'],quest:'q2',item:'старая кассета',line:'Нашёл что-нибудь старое в сарае?'},{name:'Игорь',x:1600,y:1190,color:'#222',hair:'#151515',times:['день','вечер','ночь'],quest:'q3',item:'медиатор',line:'Без медиатора рок-мяу не звучит.'},{name:'Настя',x:1440,y:620,color:'#b44452',hair:'#6b3a22',times:['день','вечер','ночь'],quest:'q4',line:'Светлячки лучше всего видны ночью на поляне.'},{name:'Лиза',x:1160,y:840,color:'#ff7cc6',hair:'#ff8bd6',times:['утро','день','вечер'],quest:'q5',item:'наклейки',line:'Наклейки сделают уголок Рыжика вайбовым!'},{name:'Маг',x:790,y:1150,color:'#4a295f',hair:'#111',hat:1,times:['вечер','ночь'],quest:'q6',item:'лунный колокольчик',line:'Колодец слышит ночные колокольчики.'},{name:'Соня',x:1940,y:650,color:'#6aa36f',hair:'#ead58a',times:['утро','день'],quest:'q7',item:'редкий лист',line:'Тропа откроется тому, кто замечает листья.'},{name:'Нэна',x:1320,y:650,color:'#6b6fb2',hair:'#241a1a',glasses:1,times:['утро','день'],quest:'q8',item:'страницы дневника',line:'В записях есть схема теплицы.'},{name:'Кристина',x:560,y:1120,color:'#2b2f3a',hair:'#72402a',tattoo:1,times:['день','вечер'],quest:'q9',item:'детали фонаря',line:'Починим фонарь — ночью станет уютнее.'},{name:'Даня',x:650,y:920,color:'#5863cc',hair:'#3b2720',glasses:1,times:['утро','день','вечер'],quest:'q10',item:'пуговица',line:'Из пуговицы можно сделать игрушку.'},{name:'Прохор',x:1750,y:1030,color:'#8b4534',hair:'#2b1b10',tattoo:1,times:['утро','день','вечер'],quest:'q11',line:'Забор чинят не словами, а лапами!'}]}start(load=false){if(load)this.load();this.paused=false;this.ui.hideMenu();this.mobile.show();$('hud').classList.remove('hidden');$('quest').classList.remove('hidden');this.toast('Подойди к персонажу или предмету')}loop(t){let dt=Math.min(.05,(t-this.last)/1000);this.last=t;if(!this.paused)this.update(dt);this.draw.render();this.ui.update();requestAnimationFrame(x=>this.loop(x))}update(dt){let v=this.input.vec();if(Math.hypot(this.mobile.v.x,this.mobile.v.y)>.05)v=this.mobile.v;this.p.update(dt,v);this.w.update(dt);let k=this.input.k;if(k.e){this.interact();k.e=0}if(k[' ']){this.meow();k[' ']=0}if(k.i){this.ui.inv();k.i=0}if(k.m){this.ui.map();k.m=0}if(k.q){this.ui.quests();k.q=0}if(k.escape){this.ui.menu(true);k.escape=0}}nearestItem(){return this.w.items.filter(i=>!this.inv.includes(i.name)&&(!i.night||this.w.time==='ночь')).map(i=>({i,d:D(this.p,i)})).sort((a,b)=>a.d-b.d)[0]}nearestNPC(){return this.npcs.filter(n=>!n.times||n.times.includes(this.w.time)).map(n=>({n,d:D(this.p,n)})).sort((a,b)=>a.d-b.d)[0]}interact(){let it=this.nearestItem();if(it&&it.d<72){this.inv.push(it.i.name);this.audio.ok();this.toast('Найдено: '+it.i.name);let q=this.quests.q.find(q=>q.item===it.i.id&&!q.npc);if(q)this.quests.done(q.id);this.save();this.tg.vib();return}let nn=this.nearestNPC();if(nn&&nn.d<95){this.talk(nn.n);this.tg.vib();return}if(this.w.zone(this.p)==='Теплица'&&this.quests.q.filter(q=>q.done).length>=10)this.quests.done('q20');else this.toast('Рядом ничего нет')}talk(n){let q=this.quests.q.find(q=>q.id===n.quest);if(q&&!q.done){if(q.item&&this.inv.includes(q.item)){this.quests.done(q.id);this.ui.dia(n,'Спасибо, Рыжик! Теперь мы ближе к тайне теплицы. '+n.line);this.save();return}if(!q.item){this.quests.done(q.id);this.ui.dia(n,'Отлично, Рыжик! '+n.line);this.save();return}}this.ui.dia(n,n.line)}meow(){this.p.meow=.9;this.p.s.mood=clamp(this.p.s.mood+2,0,100);this.audio.meow();this.toast('Мяу!')}toast(m){let e=$('toast');e.textContent=m;e.classList.remove('hidden');clearTimeout(this.tt);this.tt=setTimeout(()=>e.classList.add('hidden'),1800)}save(){localStorage.setItem('ryzhik-save',JSON.stringify({p:{x:this.p.x,y:this.p.y,s:this.p.s},inv:this.inv,q:this.quests.q.map(q=>q.done),w:{time:this.w.time,day:this.w.day,weather:this.w.weather}}))}load(){let s=localStorage.getItem('ryzhik-save');if(!s)return;let d=JSON.parse(s);this.p.x=d.p.x;this.p.y=d.p.y;this.p.s=d.p.s;this.inv=d.inv||[];d.q?.forEach((v,i)=>this.quests.q[i]&&(this.quests.q[i].done=v));Object.assign(this.w,d.w||{})}}
+
+const $ = id => document.getElementById(id);
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const d2=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+
+class TelegramBridge{
+  constructor(){this.tg=window.Telegram?.WebApp||null}
+  init(){
+    if(!this.tg)return;
+    this.tg.ready(); this.tg.expand();
+    this.tg.BackButton.onClick(()=>game.ui.showMenu(true));
+    document.body.style.background=this.tg.themeParams?.bg_color||'#162315';
+  }
+  main(text,fn){
+    if(!this.tg)return;
+    this.tg.MainButton.setText(text); this.tg.MainButton.show();
+    this.tg.MainButton.onClick(fn);
+  }
+  hideMain(){this.tg?.MainButton?.hide()}
+  vibrate(ms=35){if(navigator.vibrate)navigator.vibrate(ms)}
+}
+
+class AudioSystem{
+  constructor(){this.ctx=null;this.enabled=true}
+  init(){this.ctx ||= new (window.AudioContext||window.webkitAudioContext)()}
+  beep(f=440,d=.08,type='sine',v=.035){
+    if(!this.enabled)return; this.init();
+    const o=this.ctx.createOscillator(), g=this.ctx.createGain();
+    o.type=type; o.frequency.value=f; g.gain.value=v;
+    o.connect(g); g.connect(this.ctx.destination); o.start();
+    g.gain.exponentialRampToValueAtTime(.001,this.ctx.currentTime+d);
+    o.stop(this.ctx.currentTime+d);
+  }
+  meow(){this.beep(650,.08,'sine',.06);setTimeout(()=>this.beep(460,.13,'triangle',.05),80)}
+  pickup(){this.beep(900,.08,'triangle',.05)}
+  quest(){this.beep(523,.1);setTimeout(()=>this.beep(784,.14),110);setTimeout(()=>this.beep(1046,.18),230)}
+  bad(){this.beep(180,.15,'sawtooth',.025)}
+}
+
+class Input{
+  constructor(){this.keys={};this.meow=false;
+    addEventListener('keydown',e=>{this.keys[e.key.toLowerCase()]=true;if(e.key===' ')this.meow=true});
+    addEventListener('keyup',e=>this.keys[e.key.toLowerCase()]=false);
+  }
+  vector(){
+    let x=0,y=0,k=this.keys;
+    if(k.a||k.arrowleft)x--; if(k.d||k.arrowright)x++;
+    if(k.w||k.arrowup)y--; if(k.s||k.arrowdown)y++;
+    const l=Math.hypot(x,y)||1; return {x:x/l,y:y/l};
+  }
+}
+
+class MobileControls{
+  constructor(){
+    this.root=$('mobileControls'); this.zone=$('stickZone'); this.stick=$('stick');
+    this.vec={x:0,y:0}; this.active=false; this.pid=null;
+    this.bindStick(); this.bindButtons();
+  }
+  show(){this.root.classList.remove('hidden')} hide(){this.root.classList.add('hidden')}
+  bindStick(){
+    const move=e=>{
+      if(!this.active||e.pointerId!==this.pid)return;
+      const r=this.zone.getBoundingClientRect(), cx=r.left+r.width/2, cy=r.top+r.height/2;
+      let dx=e.clientX-cx, dy=e.clientY-cy, len=Math.hypot(dx,dy), max=r.width*.33;
+      if(len>max){dx=dx/len*max;dy=dy/len*max;len=max}
+      this.vec={x:dx/max,y:dy/max}; this.stick.style.transform=`translate(${dx}px,${dy}px)`;
+    };
+    this.zone.addEventListener('pointerdown',e=>{this.active=true;this.pid=e.pointerId;this.zone.setPointerCapture(e.pointerId);move(e)});
+    this.zone.addEventListener('pointermove',move);
+    this.zone.addEventListener('pointerup',()=>this.reset());
+    this.zone.addEventListener('pointercancel',()=>this.reset());
+  }
+  reset(){this.active=false;this.pid=null;this.vec={x:0,y:0};this.stick.style.transform='translate(0,0)'}
+  bindButtons(){
+    $('btnAction').onclick=()=>game.tryInteract();
+    $('btnMeow').onclick=()=>game.meow();
+    $('btnInv').onclick=()=>game.ui.showInventory();
+    $('btnMap').onclick=()=>game.ui.showMap();
+    $('btnQuests').onclick=()=>game.ui.showQuests();
+    $('btnPause').onclick=()=>game.ui.showMenu(true);
+  }
+}
+
+class Player{
+  constructor(){this.x=820;this.y=780;this.r=22;this.speed=178;this.dir=1;this.walk=0;this.meowTimer=0;
+    this.stats={satiety:100,energy:100,mood:100,curiosity:50,clean:90,fame:0};
+  }
+  update(dt,v){
+    const len=Math.hypot(v.x,v.y), low=this.stats.energy<25?.65:1;
+    if(len>.05){this.x+=v.x*this.speed*low*dt;this.y+=v.y*this.speed*low*dt;this.dir=v.x<0?-1:v.x>0?1:this.dir;this.walk+=dt*10}
+    this.x=clamp(this.x,75,2260);this.y=clamp(this.y,110,1705);
+    this.meowTimer=Math.max(0,this.meowTimer-dt);
+    this.stats.satiety=clamp(this.stats.satiety-dt*.22,0,100);
+    this.stats.energy=clamp(this.stats.energy-dt*.13+(len<.05?dt*.35:0),0,100);
+    this.stats.mood=clamp(this.stats.mood+(this.stats.satiety<25?-dt*.35:dt*.04),0,100);
+  }
+}
+
+class NPC{constructor(d){Object.assign(this,d);this.friend=0} active(time){return !this.times||this.times.includes(time)}}
+
+class World{
+  constructor(){
+    this.w=2400;this.h=1800;this.time='утро';this.day=1;this.clock=0;this.weather='солнце';
+    this.unlockedZones=['Двор','Крыльцо','Сад','Сарай','Пруд','Кошачий уголок'];
+    this.zones=[
+      {name:'Двор',x:610,y:610,w:600,h:450},{name:'Крыльцо',x:890,y:420,w:400,h:190},{name:'Сад',x:1320,y:500,w:540,h:430},
+      {name:'Сарай',x:300,y:1080,w:390,h:290},{name:'Старый забор',x:1660,y:1020,w:500,h:270,lockedBy:'q11'},
+      {name:'Пруд',x:1440,y:1210,w:580,h:390},{name:'Колодец',x:690,y:1160,w:250,h:250,lockedBy:'q6'},
+      {name:'Лесная тропа',x:1850,y:500,w:370,h:520,lockedBy:'q7'},{name:'Поляна',x:1800,y:220,w:460,h:300,lockedBy:'q7'},
+      {name:'Теплица',x:300,y:220,w:380,h:270,lockedBy:'q19'},{name:'Кошачий уголок',x:1040,y:790,w:250,h:190},
+      {name:'Чердак',x:960,y:300,w:150,h:80,lockedBy:'q15'},{name:'Подвал',x:830,y:560,w:180,h:85,lockedBy:'q16'},
+      {name:'Крыша',x:890,y:260,w:410,h:115,lockedBy:'q17'},{name:'Тайная тропа',x:470,y:650,w:220,h:520,lockedBy:'q17'}
+    ];
+    this.items=[
+      {id:'bowl',name:'миска',x:760,y:710,emoji:'🥣',quest:'q1'},
+      {id:'cassette',name:'старая кассета',x:430,y:1190,emoji:'📼',quest:'q2'},
+      {id:'pick',name:'медиатор',x:1585,y:1325,emoji:'🎸',quest:'q3'},
+      {id:'stickers',name:'наклейки',x:1180,y:930,emoji:'⭐',quest:'q5'},
+      {id:'moonbell',name:'лунный колокольчик',x:770,y:1250,emoji:'🔔',quest:'q6',night:true},
+      {id:'leaf',name:'редкий лист',x:1980,y:610,emoji:'🍃',quest:'q7'},
+      {id:'pages',name:'страницы дневника',x:1030,y:330,emoji:'📜',quest:'q8'},
+      {id:'parts',name:'детали фонаря',x:525,y:1230,emoji:'🔩',quest:'q9'},
+      {id:'button',name:'пуговица',x:650,y:980,emoji:'🔘',quest:'q10'},
+      {id:'greenhouseKey',name:'ключ от теплицы',x:1100,y:840,emoji:'🗝️',quest:'q19',locked:true},
+      {id:'sunbell',name:'солнечный колокольчик',x:460,y:320,emoji:'🌞',quest:'q20',final:true,locked:true},
+    ];
+    this.fireflies=Array.from({length:50},()=>({x:1780+Math.random()*420,y:230+Math.random()*280,a:Math.random()*6}));
+    this.clouds=Array.from({length:9},()=>({x:Math.random()*2400,y:80+Math.random()*350,s:.5+Math.random()*1.2}));
+  }
+  update(dt){
+    this.clock+=dt;
+    if(this.clock>50){
+      this.clock=0;
+      const order=['утро','день','вечер','ночь']; this.time=order[(order.indexOf(this.time)+1)%4];
+      if(this.time==='утро'){this.day++; this.weather=pick(['солнце','облачно','дождь','ветер','туман']); game.toast(`День ${this.day}: ${this.event()}`)}
+    }
+    for(const f of this.fireflies)f.a+=dt*2;
+    for(const c of this.clouds){c.x+=dt*8*c.s;if(c.x>2500)c.x=-200}
+  }
+  event(){return pick(['новая коробка во дворе','дождливый вечер','сильный ветер','светлячки на поляне','музыка на крыльце','странный звук в сарае','редкий закат','ночной туман'])}
+  zoneAt(p){return this.zones.find(z=>p.x>z.x&&p.x<z.x+z.w&&p.y>z.y&&p.y<z.y+z.h)?.name||'Двор'}
+}
+
+class QuestSystem{
+  constructor(){
+    const qs=[
+      ['q1','Миска Рыжика','Найди миску у крыльца','bowl',null],
+      ['q2','Старая кассета','Отдай Лёхе кассету из сарая','cassette','Лёха'],
+      ['q3','Пропавший медиатор','Отдай Игорю медиатор у пруда','pick','Игорь'],
+      ['q4','Фото со светлячками','Ночью поговори с Настей на поляне',null,'Настя'],
+      ['q5','Потерянные наклейки','Собери наклейки для Лизы','stickers','Лиза'],
+      ['q6','Колокольчик луны','Найди лунный колокольчик ночью','moonbell','Маг'],
+      ['q7','Лесная тропа','Принеси Соне редкий лист','leaf','Соня'],
+      ['q8','Странные записи','Отдай Нэне страницы дневника','pages','Нэна'],
+      ['q9','Сломанный фонарик','Принеси Кристине детали фонаря','parts','Кристина'],
+      ['q10','Коробка сокровищ','Принеси Дане пуговицу','button','Даня'],
+      ['q11','Старый забор','Поговори с Прохором у забора',null,'Прохор'],
+      ['q12','Первый уютный уголок','Купи первое улучшение в кошачий уголок',null,null],
+      ['q13','Прудовая мелодия','Сыграй мини-игру с Игорем у пруда',null,'Игорь'],
+      ['q14','Ночная прогулка','Поговори с Магом ночью у колодца',null,'Маг'],
+      ['q15','Тайна чердака','Осмотри чердак после записей Нэны',null,null],
+      ['q16','Подвальная находка','Осмотри подвал после фонаря',null,null],
+      ['q17','Кошачья крыша','Поднимись на крышу после ремонта забора',null,null],
+      ['q18','Вечер у костра','Собери 6 друзей и поговори с Лёхой вечером',null,'Лёха'],
+      ['q19','Ключ от теплицы','Получи доверие 10 друзей и возьми ключ','greenhouseKey',null],
+      ['q20','Солнечный колокольчик','Открой теплицу и найди Солнечный колокольчик','sunbell',null],
+    ];
+    this.quests=qs.map((q,i)=>({id:q[0],title:q[1],hint:q[2],item:q[3],npc:q[4],done:false,order:i+1}));
+  }
+  active(){return this.quests.find(q=>!q.done)||this.quests.at(-1)}
+  done(id){return !!this.quests.find(q=>q.id===id)?.done}
+  progress(){return this.quests.filter(q=>q.done).length/this.quests.length}
+  complete(id){
+    const q=this.quests.find(q=>q.id===id);
+    if(q&&!q.done){q.done=true; game.player.stats.fame+=6; game.audio.quest(); game.ach.check(); game.unlockByQuest(id); game.toast(`Квест выполнен: ${q.title}`); return true}
+    return false
+  }
+}
+
+class Inventory{
+  constructor(){this.items=[]}
+  add(it){if(!this.items.includes(it.name)){this.items.push(it.name);game.audio.pickup();game.toast(`Найдено: ${it.name}`)}}
+  has(n){return this.items.includes(n)}
+}
+
+class UpgradeSystem{
+  constructor(){this.list=[
+    {id:'bowl',name:'Миска',cost:0,emoji:'🥣'},
+    {id:'pillow',name:'Подушка',cost:8,emoji:'🛏️'},
+    {id:'box',name:'Коробка',cost:10,emoji:'📦'},
+    {id:'toy',name:'Игрушечная мышь',cost:12,emoji:'🐁'},
+    {id:'lamp',name:'Фонарик',cost:16,emoji:'🏮'},
+    {id:'flowers',name:'Цветы',cost:18,emoji:'🌸'},
+    {id:'roof',name:'Навес',cost:22,emoji:'⛱️'},
+    {id:'house',name:'Мини-домик',cost:30,emoji:'🏠'},
+  ];this.bought=[]}
+  buy(id){
+    const u=this.list.find(x=>x.id===id); if(!u||this.bought.includes(id))return;
+    if(game.player.stats.fame<u.cost){game.toast('Не хватает кошачьей славы');game.audio.bad();return}
+    game.player.stats.fame-=u.cost; this.bought.push(id); game.toast(`Улучшение: ${u.name}`);
+    if(id==='bowl')game.quest.complete('q12');
+  }
+}
+
+class MiniGameSystem{
+  constructor(){
+    this.box=$('minigame'); this.area=$('miniArea'); $('miniExit').onclick=()=>this.close();
+  }
+  open(title,text){game.paused=true;this.box.classList.remove('hidden');$('miniTitle').textContent=title;$('miniText').textContent=text;this.area.innerHTML=''}
+  close(){this.box.classList.add('hidden');game.paused=false}
+  fishing(){
+    this.open('🎣 Рыбалка','Тапни по рыбке 5 раз.');
+    let score=0;
+    const spawn=()=>{
+      this.area.innerHTML=''; const el=document.createElement('div'); el.className='target'; el.textContent='🐟';
+      el.style.left=Math.random()*80+'%'; el.style.top=Math.random()*65+'%';
+      el.onclick=()=>{score++;game.audio.pickup(); if(score>=5){game.toast('Прудовая мелодия готова');game.quest.complete('q13');this.close()} else spawn()};
+      this.area.appendChild(el);
+    }; spawn();
+  }
+  fireflies(){
+    this.open('✨ Светлячки','Поймай 7 светлячков для фото Насти.');
+    let score=0;
+    for(let i=0;i<7;i++){
+      const el=document.createElement('div'); el.className='target'; el.textContent='✨';
+      el.style.left=Math.random()*82+'%'; el.style.top=Math.random()*65+'%';
+      el.onclick=()=>{el.remove();score++;game.audio.pickup(); if(score>=7){game.quest.complete('q4');this.close()}};
+      this.area.appendChild(el);
+    }
+  }
+  concert(){
+    this.open('🎵 Мяу-концерт','Тапай по нотам, пока они не исчезли.');
+    let score=0, total=0;
+    const timer=setInterval(()=>{
+      if(this.box.classList.contains('hidden')){clearInterval(timer);return}
+      total++; const el=document.createElement('div'); el.className='note';
+      el.style.left=Math.random()*85+'%'; el.style.top=Math.random()*70+'%';
+      el.onclick=()=>{score++;game.audio.meow();el.remove()};
+      this.area.appendChild(el); setTimeout(()=>el.remove(),1200);
+      if(total>=12){clearInterval(timer);setTimeout(()=>{if(score>=7){game.quest.complete('q13');game.toast('Игорь доволен концертом!')}else game.toast('Попробуй концерт ещё раз');this.close()},1400)}
+    },420);
+  }
+}
+
+class AchievementSystem{
+  constructor(){this.list=['Первый мяу','Первый друг','Рыбак','Исследователь','Ночной кот','Мастер прыжков','Музыкальный кот','Друг Лёхи','Друг Игоря','Друг Насти','Друг Лизы','Друг Мага','Друг Сони','Друг Нэны','Друг Кристины','Друг Дани','Друг Прохора','Все друзья рядом','Тайна теплицы','Настоящий хозяин двора'];this.unlocked=[]}
+  unlock(a){if(!this.unlocked.includes(a)){this.unlocked.push(a);game.toast(`🏆 ${a}`)}}
+  check(){
+    const c=game.quest.quests.filter(q=>q.done).length;
+    if(c>=5)this.unlock('Исследователь');
+    if(game.world.time==='ночь')this.unlock('Ночной кот');
+    if(game.quest.done('q20')){this.unlock('Тайна теплицы');this.unlock('Настоящий хозяин двора')}
+    if(game.npcs.every(n=>n.friend>=1))this.unlock('Все друзья рядом');
+  }
+}
+
+class SaveSystem{
+  save(){
+    const data={p:{x:game.player.x,y:game.player.y,stats:game.player.stats},inv:game.inv.items,quests:game.quest.quests.map(q=>q.done),ach:game.ach.unlocked,npc:game.npcs.map(n=>n.friend),world:{time:game.world.time,day:game.world.day,weather:game.world.weather,unlockedZones:game.world.unlockedZones},upgrades:game.upgrades.bought};
+    localStorage.setItem('ryzhik-v2-save',JSON.stringify(data)); game.toast('Сохранено');
+  }
+  load(){
+    const s=localStorage.getItem('ryzhik-v2-save')||localStorage.getItem('ryzhik-save'); if(!s)return false;
+    const d=JSON.parse(s); if(d.p){game.player.x=d.p.x;game.player.y=d.p.y;game.player.stats=d.p.stats}
+    game.inv.items=d.inv||[]; d.quests?.forEach((v,i)=>game.quest.quests[i]&&(game.quest.quests[i].done=v));
+    game.ach.unlocked=d.ach||[]; d.npc?.forEach((v,i)=>game.npcs[i]&&(game.npcs[i].friend=v));
+    Object.assign(game.world,d.world||{}); game.upgrades.bought=d.upgrades||[]; return true
+  }
+}
+
+class UIManager{
+  constructor(){this.bind()}
+  bind(){
+    $('newGameBtn').onclick=()=>{localStorage.removeItem('ryzhik-v2-save');game.start(false,true)};
+    $('continueBtn').onclick=()=>game.start(true);
+    $('saveBtn').onclick=()=>game.save.save();
+    $('achBtn').onclick=()=>this.showAchievements();
+    $('upgradesBtn').onclick=()=>this.showUpgrades();
+    $('aboutBtn').onclick=()=>this.modal('Об игре','<p>Версия 2: добавлены мини-игры, улучшения, цепочка квестов, более живая графика и прогресс.</p>');
+    $('closeModal').onclick=()=>this.closeModal();
+    $('dialogue').onclick=()=>this.closeDialogue();
+  }
+  showMenu(pause=false){$('menu').classList.remove('hidden');if(pause)game.paused=true}
+  hideMenu(){$('menu').classList.add('hidden')}
+  modal(t,html){$('modalTitle').textContent=t;$('modalContent').innerHTML=html;$('modal').classList.remove('hidden');game.paused=true}
+  closeModal(){$('modal').classList.add('hidden');game.paused=false}
+  update(){
+    const s=game.player.stats; $('satiety').textContent=s.satiety|0;$('energy').textContent=s.energy|0;$('mood').textContent=s.mood|0;$('fame').textContent=s.fame|0;
+    $('timeWeather').textContent=`${game.world.time} • ${game.world.weather} • ${game.world.zoneAt(game.player)}`;
+    const q=game.quest.active(); $('questTitle').textContent=`${q.order}. ${q.title}`;$('questHint').textContent=q.hint;$('questProgress').style.width=(game.quest.progress()*100)+'%';
+  }
+  showInventory(){this.modal('🎒 Инвентарь',game.inv.items.length?`<ul>${game.inv.items.map(i=>`<li>${i}</li>`).join('')}</ul>`:'<p>Пока пусто.</p>')}
+  showQuests(){this.modal('📜 Квесты',game.quest.quests.map(q=>`<div class="card ${q.done?'done':''}">${q.done?'✅':'⬜'} <b>${q.order}. ${q.title}</b><br><small>${q.hint}</small></div>`).join(''))}
+  showMap(){this.modal('🗺️ Карта',`<p>Текущая зона: <b>${game.world.zoneAt(game.player)}</b></p>`+game.world.zones.map(z=>`<div class="card">${game.world.unlockedZones.includes(z.name)?'🔓':'🔒'} ${z.name}</div>`).join(''))}
+  showAchievements(){this.modal('🏆 Достижения',game.ach.list.map(a=>`<div class="card">${game.ach.unlocked.includes(a)?'✅':'⬜'} ${a}</div>`).join(''))}
+  showUpgrades(){
+    this.modal('🐾 Кошачий уголок',`<p>Кошачья слава: <b>${game.player.stats.fame|0}</b></p>`+game.upgrades.list.map(u=>`<div class="card upgrade"><span>${u.emoji} <b>${u.name}</b><br><small>Цена: ${u.cost} славы</small></span><button onclick="game.upgrades.buy('${u.id}');game.ui.showUpgrades()">${game.upgrades.bought.includes(u.id)?'Есть':'Купить'}</button></div>`).join(''))
+  }
+  dialogue(n,text){$('speaker').textContent=n.name;$('dialogueText').textContent=text;$('portrait').style.background=n.color;$('dialogue').classList.remove('hidden');game.paused=true}
+  closeDialogue(){$('dialogue').classList.add('hidden');game.paused=false}
+}
+
+class Renderer{
+  constructor(c){this.c=c;this.ctx=c.getContext('2d');this.resize();addEventListener('resize',()=>this.resize())}
+  resize(){this.c.width=innerWidth*devicePixelRatio;this.c.height=innerHeight*devicePixelRatio;this.ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0)}
+  render(){
+    const ctx=this.ctx,p=game.player,cam={x:clamp(p.x-innerWidth/2,0,game.world.w-innerWidth),y:clamp(p.y-innerHeight/2,0,game.world.h-innerHeight)};
+    ctx.clearRect(0,0,innerWidth,innerHeight);ctx.save();ctx.translate(-cam.x,-cam.y);
+    this.drawGrass(ctx);this.drawCloudShadows(ctx);this.drawWorld(ctx);this.drawItems(ctx);game.npcs.forEach(n=>this.drawHumanNPC(ctx,n));this.drawCat(ctx,p);this.drawFireflies(ctx);ctx.restore();
+    this.drawLightingOverlay(ctx);this.drawMiniMap(ctx);
+  }
+  round(ctx,x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fill();ctx.stroke()}
+  drawGrass(ctx){
+    const g=ctx.createLinearGradient(0,0,0,game.world.h);g.addColorStop(0,'#8fd36d');g.addColorStop(1,'#5ea64c');ctx.fillStyle=g;ctx.fillRect(0,0,game.world.w,game.world.h);
+    for(let i=0;i<950;i++){const x=(i*137)%game.world.w,y=(i*277)%game.world.h;ctx.fillStyle=i%3?'#74ad59':'#a1db80';ctx.fillRect(x,y,2+(i%3),8+(i%7))}
+  }
+  drawCloudShadows(ctx){ctx.fillStyle='rgba(255,255,255,.12)';for(const c of game.world.clouds){ctx.beginPath();ctx.ellipse(c.x,c.y,90*c.s,30*c.s,0,0,7);ctx.fill()}}
+  drawWorld(ctx){this.drawHouse(ctx,820,250);this.drawBarn(ctx,300,1080);this.drawGreenhouse(ctx,300,230);this.drawPond(ctx,1460,1230);this.drawFence(ctx,1680,1040);this.drawTrees(ctx);this.drawFlowers(ctx);this.drawWell(ctx,720,1190);this.drawCatCorner(ctx,1050,800);this.drawCampfire(ctx,1900,360)}
+  drawHouse(ctx,x,y){ctx.save();ctx.shadowColor='#0005';ctx.shadowBlur=22;ctx.shadowOffsetY=16;ctx.fillStyle='#a85c36';ctx.strokeStyle='#5b2b1b';ctx.lineWidth=5;this.round(ctx,x,y+130,420,280,18);ctx.fillStyle='#73351f';ctx.beginPath();ctx.moveTo(x-30,y+145);ctx.lineTo(x+210,y);ctx.lineTo(x+450,y+145);ctx.closePath();ctx.fill();ctx.stroke();ctx.fillStyle=game.world.time==='ночь'?'#ffd36d':'#aee0ff';for(let i=0;i<3;i++){ctx.fillRect(x+70+i*120,y+190,58,70);ctx.strokeRect(x+70+i*120,y+190,58,70)}ctx.fillStyle='#5d3724';ctx.fillRect(x+180,y+280,80,130);ctx.restore()}
+  drawBarn(ctx,x,y){ctx.save();ctx.shadowColor='#0004';ctx.shadowBlur=18;ctx.fillStyle='#8f3f2d';ctx.strokeStyle='#522';ctx.lineWidth=4;this.round(ctx,x,y,360,250,14);ctx.fillStyle='#c85d42';ctx.fillRect(x+130,y+90,100,160);ctx.strokeRect(x+130,y+90,100,160);ctx.restore()}
+  drawGreenhouse(ctx,x,y){ctx.save();ctx.fillStyle='#9de0bf88';ctx.strokeStyle='#3b7661';ctx.lineWidth=5;this.round(ctx,x,y,330,230,28);for(let i=0;i<5;i++){ctx.beginPath();ctx.moveTo(x+i*70,y);ctx.lineTo(x+i*70,y+230);ctx.stroke()}ctx.restore()}
+  drawPond(ctx,x,y){ctx.save();ctx.fillStyle='#4fa8c8';ctx.shadowColor='#b9ffff';ctx.shadowBlur=20;ctx.beginPath();ctx.ellipse(x+250,y+160,270,155,0,0,7);ctx.fill();ctx.strokeStyle='#2c6d82';ctx.lineWidth=5;ctx.stroke();ctx.strokeStyle='rgba(255,255,255,.35)';for(let i=0;i<6;i++){ctx.beginPath();ctx.ellipse(x+210+i*22,y+145+i*9,90,14,0,0,7);ctx.stroke()}ctx.restore()}
+  drawFence(ctx,x,y){ctx.fillStyle='#8b5b33';ctx.strokeStyle='#4d2d19';for(let i=0;i<14;i++){ctx.fillRect(x+i*34,y+(i%2)*8,18,180);ctx.strokeRect(x+i*34,y+(i%2)*8,18,180)}ctx.fillRect(x-10,y+60,500,18);ctx.fillRect(x-10,y+130,500,18)}
+  drawTrees(ctx){for(let i=0;i<34;i++){const x=90+(i*311)%2220,y=120+(i*197)%1570;ctx.fillStyle='#6b3e22';ctx.fillRect(x,y+52,30,75);ctx.fillStyle=i%2?'#3f8f4a':'#4da65a';ctx.beginPath();ctx.ellipse(x+14,y+45,65,56,0,0,7);ctx.fill();ctx.fillStyle='#ffffff18';ctx.beginPath();ctx.ellipse(x-8,y+28,28,18,0,0,7);ctx.fill()}}
+  drawFlowers(ctx){for(let i=0;i<170;i++){const x=90+(i*173)%2200,y=180+(i*83)%1500;ctx.fillStyle=['#ff7aa8','#ffe66e','#f66','#b87cff'][i%4];ctx.beginPath();ctx.arc(x,y,4,0,7);ctx.fill()}}
+  drawWell(ctx,x,y){ctx.fillStyle='#8a7667';ctx.beginPath();ctx.arc(x+60,y+60,55,0,7);ctx.fill();ctx.strokeStyle='#493a31';ctx.lineWidth=5;ctx.stroke();ctx.fillStyle='#32251f';ctx.beginPath();ctx.arc(x+60,y+60,32,0,7);ctx.fill()}
+  drawCampfire(ctx,x,y){ctx.fillStyle='#6b3b20';ctx.fillRect(x-45,y+24,90,12);if(game.world.time==='вечер'||game.world.time==='ночь'){ctx.fillStyle='#ffb13b';ctx.beginPath();ctx.arc(x,y,30+Math.sin(performance.now()/120)*4,0,7);ctx.fill();ctx.fillStyle='#ff553b';ctx.beginPath();ctx.arc(x,y+5,18,0,7);ctx.fill()}}
+  drawCatCorner(ctx,x,y){ctx.fillStyle='#ffe0a0';ctx.strokeStyle='#86511f';ctx.lineWidth=4;this.round(ctx,x,y,220,160,22);ctx.font='26px serif';let xx=x+20;for(const id of game.upgrades.bought){const u=game.upgrades.list.find(a=>a.id===id);ctx.fillText(u?.emoji||'🐾',xx,y+95);xx+=28}}
+  drawItems(ctx){for(const it of game.world.items){if(game.inv.items.includes(it.name))continue;if(it.night&&game.world.time!=='ночь')continue;if(it.locked&&!game.canSeeLockedItem(it))continue;ctx.font='30px serif';ctx.fillText(it.emoji,it.x,it.y)}}
+  drawHumanNPC(ctx,n){if(!n.active(game.world.time))return;ctx.save();ctx.translate(n.x,n.y);ctx.fillStyle='#0004';ctx.beginPath();ctx.ellipse(0,38,30,10,0,0,7);ctx.fill();ctx.fillStyle=n.color;ctx.fillRect(-20,-18,40,58);ctx.fillStyle=n.skin||'#f0ba8e';ctx.beginPath();ctx.arc(0,-38,23,0,7);ctx.fill();ctx.fillStyle=n.hair;ctx.beginPath();ctx.arc(0,-50,25,Math.PI,0);ctx.fill();if(n.hat){ctx.fillStyle='#2b1b35';ctx.beginPath();ctx.moveTo(-32,-58);ctx.lineTo(0,-102);ctx.lineTo(32,-58);ctx.closePath();ctx.fill()}if(n.glasses){ctx.strokeStyle=n.name==='Даня'?'#f33':'#111';ctx.lineWidth=3;ctx.strokeRect(-18,-43,14,10);ctx.strokeRect(4,-43,14,10)}if(n.tattoo){ctx.strokeStyle='#28314b';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-27,-5);ctx.lineTo(-37,26);ctx.moveTo(27,-5);ctx.lineTo(37,26);ctx.stroke()}ctx.fillStyle='#111';ctx.fillRect(-8,-37,4,4);ctx.fillRect(8,-37,4,4);ctx.fillStyle='#fff';ctx.font='14px system-ui';ctx.textAlign='center';ctx.fillText(n.name,0,66);ctx.restore()}
+  drawCat(ctx,p){ctx.save();ctx.translate(p.x,p.y);ctx.scale(p.dir,1);let w=Math.sin(p.walk)*4;ctx.fillStyle='#0004';ctx.beginPath();ctx.ellipse(0,24,34,12,0,0,7);ctx.fill();ctx.fillStyle='#f1842d';ctx.strokeStyle='#7a3b16';ctx.lineWidth=3;ctx.beginPath();ctx.ellipse(0,0,35,24,0,0,7);ctx.fill();ctx.stroke();ctx.beginPath();ctx.arc(28,-18,24,0,7);ctx.fill();ctx.stroke();ctx.beginPath();ctx.moveTo(12,-36);ctx.lineTo(18,-62);ctx.lineTo(30,-36);ctx.moveTo(36,-36);ctx.lineTo(50,-60);ctx.lineTo(52,-30);ctx.fill();ctx.stroke();ctx.strokeStyle='#7a3b16';ctx.lineWidth=8;ctx.beginPath();ctx.moveTo(-30,-2);ctx.quadraticCurveTo(-62,-38,-34,-54+w);ctx.stroke();ctx.fillStyle='#6cff93';ctx.beginPath();ctx.arc(22,-21,4,0,7);ctx.arc(38,-21,4,0,7);ctx.fill();ctx.strokeStyle='#7a3b16';ctx.lineWidth=2;for(let i=0;i<3;i++){ctx.beginPath();ctx.moveTo(8+i*10,-4);ctx.lineTo(18+i*8,5);ctx.stroke()}if(p.meowTimer>0){ctx.fillStyle='#fff8';ctx.font='22px system-ui';ctx.fillText('Мяу!',44,-54)}ctx.restore()}
+  drawFireflies(ctx){if(game.world.time!=='вечер'&&game.world.time!=='ночь')return;for(const f of game.world.fireflies){ctx.fillStyle=`rgba(255,230,120,${.35+.45*Math.sin(f.a)})`;ctx.beginPath();ctx.arc(f.x,f.y,3+Math.sin(f.a)*2,0,7);ctx.fill()}}
+  drawLightingOverlay(ctx){if(game.world.time==='вечер'){this.overlay(ctx,'rgba(255,130,45,.14)')}if(game.world.time==='ночь'){this.overlay(ctx,'rgba(20,35,90,.35)')}if(game.world.weather==='туман'){this.overlay(ctx,'rgba(230,240,230,.18)')}if(game.world.weather==='дождь'){ctx.strokeStyle='rgba(190,220,255,.45)';for(let i=0;i<90;i++){let x=(i*47+performance.now()/8)%innerWidth,y=(i*91+performance.now()/5)%innerHeight;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x-8,y+18);ctx.stroke()}}}
+  overlay(ctx,c){ctx.fillStyle=c;ctx.fillRect(0,0,innerWidth,innerHeight)}
+  drawMiniMap(ctx){ctx.save();ctx.globalAlpha=.85;ctx.fillStyle='#1b160fcc';ctx.fillRect(innerWidth-118,82,100,76);ctx.fillStyle='#80bd63';ctx.fillRect(innerWidth-112,88,88,64);ctx.fillStyle='#f1842d';ctx.beginPath();ctx.arc(innerWidth-112+game.player.x/game.world.w*88,88+game.player.y/game.world.h*64,4,0,7);ctx.fill();ctx.restore()}
+}
+
+class Game{
+  constructor(){
+    window.game=this;this.tg=new TelegramBridge();this.tg.init();this.canvas=$('game');this.renderer=new Renderer(this.canvas);
+    this.input=new Input();this.mobile=new MobileControls();this.audio=new AudioSystem();this.world=new World();this.player=new Player();
+    this.quest=new QuestSystem();this.inv=new Inventory();this.upgrades=new UpgradeSystem();this.mini=new MiniGameSystem();this.ach=new AchievementSystem();this.save=new SaveSystem();this.ui=new UIManager();
+    this.npcs=this.makeNPCs();this.paused=true;this.last=performance.now();requestAnimationFrame(t=>this.loop(t));
+  }
+  makeNPCs(){return[
+    new NPC({name:'Лёха',x:970,y:620,color:'#e9dcc5',hair:'#f2d77b',times:['утро','день','вечер'],quest:'q2',item:'старая кассета',line:'У этого дома память как старая плёнка. Найдёшь кассету — расскажу больше.'}),
+    new NPC({name:'Игорь',x:1600,y:1190,color:'#222',hair:'#151515',times:['день','вечер','ночь'],quest:'q3',item:'медиатор',line:'Без медиатора рок-мяу не звучит. У пруда я его точно ронял.'}),
+    new NPC({name:'Настя',x:1440,y:620,color:'#b44452',hair:'#6b3a22',times:['день','вечер','ночь'],quest:'q4',line:'Светлячки лучше всего видны ночью на поляне. Хочу фото с Рыжиком.'}),
+    new NPC({name:'Лиза',x:1160,y:840,color:'#ff7cc6',hair:'#ff8bd6',times:['утро','день','вечер'],quest:'q5',item:'наклейки',line:'Надо сделать уголок Рыжика самым милым местом во дворе!'}),
+    new NPC({name:'Маг',x:790,y:1150,color:'#4a295f',hair:'#111',hat:true,times:['вечер','ночь'],quest:'q6',item:'лунный колокольчик',line:'Колодец слышит то, что днём прячется.'}),
+    new NPC({name:'Соня',x:1940,y:650,color:'#6aa36f',hair:'#ead58a',times:['утро','день'],quest:'q7',item:'редкий лист',line:'Тропа откроется, если найти лист с дальней стороны леса.'}),
+    new NPC({name:'Нэна',x:1320,y:650,color:'#6b6fb2',hair:'#241a1a',glasses:true,times:['утро','день','вечер'],quest:'q8',item:'страницы дневника',line:'В записях есть схема старой теплицы.'}),
+    new NPC({name:'Кристина',x:560,y:1120,color:'#2b2f3a',hair:'#72402a',tattoo:true,times:['день','вечер'],quest:'q9',item:'детали фонаря',line:'Фонарь починим — ночью станет не страшно, а красиво.'}),
+    new NPC({name:'Даня',x:650,y:920,color:'#5863cc',hair:'#3b2720',glasses:true,times:['утро','день','вечер'],quest:'q10',item:'пуговица',line:'Пуговица? Из неё можно сделать игрушку, отвечаю.'}),
+    new NPC({name:'Прохор',x:1750,y:1030,color:'#8b4534',hair:'#2b1b10',tattoo:true,times:['утро','день','вечер'],quest:'q11',line:'Забор сам себя не починит. Но кот с характером — уже полдела.'})
+  ]}
+  start(load=false,fresh=false){if(load)this.save.load();this.paused=false;this.ui.hideMenu();this.mobile.show();$('topHud').classList.remove('hidden');$('questHud').classList.remove('hidden');this.toast(fresh?'Новая игра началась':'Добро пожаловать обратно')}
+  loop(t){const dt=Math.min(.05,(t-this.last)/1000);this.last=t;if(!this.paused)this.update(dt);this.renderer.render();this.ui.update();requestAnimationFrame(tt=>this.loop(tt))}
+  update(dt){
+    let v=this.input.vector();if(Math.hypot(this.mobile.vec.x,this.mobile.vec.y)>.05)v=this.mobile.vec;
+    this.player.update(dt,v);this.world.update(dt);this.ach.check();
+    if(this.input.meow){this.meow();this.input.meow=false}
+    if(this.input.keys.e){this.tryInteract();this.input.keys.e=false}
+    if(this.input.keys.i){this.ui.showInventory();this.input.keys.i=false}
+    if(this.input.keys.m){this.ui.showMap();this.input.keys.m=false}
+    if(this.input.keys.q){this.ui.showQuests();this.input.keys.q=false}
+    if(this.input.keys.escape){this.ui.showMenu(true);this.input.keys.escape=false}
+  }
+  canSeeLockedItem(it){if(it.id==='greenhouseKey')return this.npcs.every(n=>n.friend>=1);if(it.id==='sunbell')return this.inv.has('ключ от теплицы');return true}
+  unlockByQuest(id){
+    if(id==='q7'){this.world.unlockedZones.push('Лесная тропа','Поляна');this.toast('Открыта поляна')}
+    if(id==='q11'){this.world.unlockedZones.push('Старый забор','Крыша','Тайная тропа')}
+    if(id==='q9'){this.world.unlockedZones.push('Подвал','Колодец')}
+    if(id==='q8'){this.world.unlockedZones.push('Чердак')}
+    if(id==='q19'){this.world.unlockedZones.push('Теплица')}
+  }
+  nearestNPC(){return this.npcs.filter(n=>n.active(this.world.time)).map(n=>({n,d:d2(this.player,n)})).sort((a,b)=>a.d-b.d)[0]}
+  nearestItem(){return this.world.items.filter(it=>!this.inv.items.includes(it.name)&&(!it.night||this.world.time==='ночь')&&(!it.locked||this.canSeeLockedItem(it))).map(it=>({it,d:d2(this.player,it)})).sort((a,b)=>a.d-b.d)[0]}
+  tryInteract(){
+    const zone=this.world.zoneAt(this.player);
+    if(zone==='Пруд' && d2(this.player,{x:1600,y:1330})<160){this.mini.fishing();return}
+    if(zone==='Поляна' && (this.world.time==='ночь'||this.world.time==='вечер')){this.mini.fireflies();return}
+    const ni=this.nearestItem(); if(ni&&ni.d<72){this.inv.add(ni.it); if(ni.it.id==='bowl')this.quest.complete('q1'); if(ni.it.id==='greenhouseKey')this.quest.complete('q19'); if(ni.it.id==='sunbell')this.quest.complete('q20'); this.tg.vibrate(); return}
+    const nn=this.nearestNPC(); if(nn&&nn.d<96){this.talk(nn.n);this.tg.vibrate();return}
+    if(zone==='Кошачий уголок'){this.ui.showUpgrades();return}
+    this.toast('Рядом ничего нет')
+  }
+  talk(n){
+    if(n.name==='Игорь'&&this.world.time==='вечер'&&this.quest.done('q3')){this.mini.concert();return}
+    if(n.name==='Настя'&&(this.world.time==='вечер'||this.world.time==='ночь')&&this.world.zoneAt(this.player)==='Поляна'){this.mini.fireflies();return}
+    const q=this.quest.quests.find(q=>q.id===n.quest);
+    if(q&&!q.done){
+      if(q.item&&this.inv.has(q.item)){this.quest.complete(q.id);n.friend=clamp(n.friend+1,0,3);this.ach.unlock('Друг '+n.name);this.ui.dialogue(n,`Спасибо, Рыжик! Теперь я тебе доверяю. ${n.line}`);return}
+      if(!q.item){this.quest.complete(q.id);n.friend=clamp(n.friend+1,0,3);this.ach.unlock('Друг '+n.name);this.ui.dialogue(n,`Ты справился. ${n.line}`);return}
+    }
+    if(n.name==='Лёха'&&this.world.time==='вечер'&&this.npcs.filter(x=>x.friend>=1).length>=6){this.quest.complete('q18')}
+    this.ui.dialogue(n,n.line)
+  }
+  meow(){this.player.meowTimer=.9;this.audio.meow();this.ach.unlock('Первый мяу');this.player.stats.mood=clamp(this.player.stats.mood+2,0,100)}
+  toast(m){const el=$('toast');el.textContent=m;el.classList.remove('hidden');clearTimeout(this.toastT);this.toastT=setTimeout(()=>el.classList.add('hidden'),1900)}
+}
 new Game();
 })();

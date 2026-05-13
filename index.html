@@ -10,15 +10,74 @@
 </head>
 <body>
   <canvas id="game"></canvas>
-  <div id="hud" class="hud hidden">
-    <b>🐈 Рыжик</b><span>🍗 <i id="satiety">100</i></span><span>⚡ <i id="energy">100</i></span><span>😊 <i id="mood">100</i></span><span>⭐ <i id="fame">0</i></span><em id="timeWeather">Утро • Солнце</em>
+
+  <div id="loading" class="loading hidden">
+    <div class="catLoader">🐈</div>
+    <b>Рыжик бежит к дому...</b>
   </div>
-  <div id="quest" class="quest hidden"><b id="questTitle"></b><small id="questHint"></small></div>
+
+  <div id="topHud" class="hud hidden">
+    <div class="brand">🐈 Рыжик</div>
+    <div class="stat">🍗 <span id="satiety">100</span></div>
+    <div class="stat">⚡ <span id="energy">100</span></div>
+    <div class="stat">😊 <span id="mood">100</span></div>
+    <div class="stat">⭐ <span id="fame">0</span></div>
+    <div class="pill" id="timeWeather">Утро • Солнце</div>
+  </div>
+
+  <div id="questHud" class="quest hidden">
+    <b id="questTitle">Квест</b>
+    <span id="questHint">Подойди к Лёхе</span>
+    <div class="questbar"><i id="questProgress"></i></div>
+  </div>
+
   <div id="toast" class="toast hidden"></div>
-  <div id="menu" class="panel menu"><h1>🐈 Рыжик</h1><p>Тайна загородного дома</p><button id="newGame">Новая игра</button><button id="continueGame">Продолжить</button><button id="about">Об игре</button></div>
-  <div id="modal" class="panel hidden"><button id="closeModal" class="close">×</button><h2 id="modalTitle"></h2><div id="modalContent"></div></div>
-  <div id="dialogue" class="dialogue hidden"><div id="portrait"></div><div><b id="speaker"></b><p id="dialogueText"></p><small>Тапни, чтобы продолжить</small></div></div>
-  <div id="controls" class="mobile hidden"><div id="stickZone"><div id="stick"></div></div><div class="btns"><button id="btnMap">🗺️</button><button id="btnQuest">📜</button><button id="btnInv">🎒</button><button id="btnPause">⏸</button><button id="btnMeow" class="big">Мяу</button><button id="btnAction" class="big action">Действие</button></div></div>
+
+  <div id="menu" class="panel menu">
+    <h1>🐈 Рыжик</h1>
+    <p>Тайна загородного дома</p>
+    <button id="newGameBtn">Новая игра</button>
+    <button id="continueBtn">Продолжить</button>
+    <button id="saveBtn">Сохранить</button>
+    <button id="achBtn">Достижения</button>
+    <button id="upgradesBtn">Кошачий уголок</button>
+    <button id="aboutBtn">Об игре</button>
+  </div>
+
+  <div id="modal" class="panel modal hidden">
+    <button class="close" id="closeModal">×</button>
+    <h2 id="modalTitle"></h2>
+    <div id="modalContent"></div>
+  </div>
+
+  <div id="dialogue" class="dialogue hidden">
+    <div id="portrait" class="portrait"></div>
+    <div>
+      <div id="speaker" class="speaker"></div>
+      <div id="dialogueText"></div>
+      <small>Тапни, чтобы продолжить</small>
+    </div>
+  </div>
+
+  <div id="minigame" class="minigame hidden">
+    <h2 id="miniTitle"></h2>
+    <p id="miniText"></p>
+    <div id="miniArea"></div>
+    <button id="miniExit">Закрыть</button>
+  </div>
+
+  <div id="mobileControls" class="mobile hidden">
+    <div id="stickZone" class="stick-zone"><div id="stick"></div></div>
+    <div class="buttons">
+      <button id="btnMap">🗺️</button>
+      <button id="btnQuests">📜</button>
+      <button id="btnInv">🎒</button>
+      <button id="btnPause">⏸</button>
+      <button id="btnMeow" class="big">Мяу</button>
+      <button id="btnAction" class="big action">Действие</button>
+    </div>
+  </div>
+
   <script src="game.js"></script>
 </body>
 </html>
