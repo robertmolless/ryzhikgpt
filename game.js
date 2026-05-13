@@ -1,898 +1,384 @@
-(() => {
-'use strict';
+import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
 
 const $ = id => document.getElementById(id);
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-const d2=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
-const pick=a=>a[Math.floor(Math.random()*a.length)];
+const dist2=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
 
 class TelegramBridge{
   constructor(){this.tg=window.Telegram?.WebApp||null}
-  init(){
-    if(!this.tg)return;
-    this.tg.ready(); this.tg.expand();
-    this.tg.BackButton.onClick(()=>game.ui.showMenu(true));
-    document.body.style.background=this.tg.themeParams?.bg_color||'#162315';
-  }
-  main(text,fn){
-    if(!this.tg)return;
-    this.tg.MainButton.setText(text); this.tg.MainButton.show();
-    this.tg.MainButton.onClick(fn);
-  }
-  hideMain(){this.tg?.MainButton?.hide()}
+  init(){if(!this.tg)return;this.tg.ready();this.tg.expand();this.tg.BackButton.onClick(()=>game.ui.showMenu(true))}
   vibrate(ms=35){if(navigator.vibrate)navigator.vibrate(ms)}
 }
 
-class AudioSystem{
-  constructor(){
-    this.ctx=null;
-    this.enabled=true;
-    this.musicStarted=false;
-    this.ambienceTimer=0;
+class Music{
+  constructor(){this.ctx=null;this.enabled=true;this.started=false;this.step=0;this.next=0}
+  init(){this.ctx ||= new (window.AudioContext||window.webkitAudioContext)()}
+  tone(freq,dur=.3,type='sine',vol=.035,when=0){
+    if(!this.enabled)return;this.init();
+    const o=this.ctx.createOscillator(), g=this.ctx.createGain();
+    o.type=type;o.frequency.setValueAtTime(freq,this.ctx.currentTime+when);
+    g.gain.setValueAtTime(0.0001,this.ctx.currentTime+when);
+    g.gain.exponentialRampToValueAtTime(vol,this.ctx.currentTime+when+.03);
+    g.gain.exponentialRampToValueAtTime(0.0001,this.ctx.currentTime+when+dur);
+    o.connect(g);g.connect(this.ctx.destination);o.start(this.ctx.currentTime+when);o.stop(this.ctx.currentTime+when+dur+.05);
   }
-  init(){
-    this.ctx ||= new (window.AudioContext||window.webkitAudioContext)();
+  noise(dur=.08,vol=.02){
+    if(!this.enabled)return;this.init();
+    const buffer=this.ctx.createBuffer(1,this.ctx.sampleRate*dur,this.ctx.sampleRate);
+    const data=buffer.getChannelData(0);for(let i=0;i<data.length;i++)data[i]=Math.random()*2-1;
+    const src=this.ctx.createBufferSource(), g=this.ctx.createGain();src.buffer=buffer;g.gain.value=vol;src.connect(g);g.connect(this.ctx.destination);src.start();
   }
-  tone(freq=440,dur=.08,type='sine',vol=.03){
-    if(!this.enabled)return;
-    this.init();
-    const o=this.ctx.createOscillator();
-    const g=this.ctx.createGain();
-    o.type=type;
-    o.frequency.value=freq;
-    g.gain.value=vol;
-    o.connect(g);
-    g.connect(this.ctx.destination);
-    o.start();
-    g.gain.exponentialRampToValueAtTime(.0001,this.ctx.currentTime+dur);
-    o.stop(this.ctx.currentTime+dur);
-  }
-  chord(notes=[440,660],dur=.3,type='triangle',vol=.015){
-    notes.forEach((n,i)=>setTimeout(()=>this.tone(n,dur,type,vol),i*40));
-  }
-  meow(){
-    this.tone(620,.08,'sine',.06);
-    setTimeout(()=>this.tone(470,.13,'triangle',.05),70);
-  }
-  pickup(){
-    this.chord([880,1174],.14,'triangle',.03);
-  }
-  quest(){
-    this.chord([523,659,784],.25,'triangle',.03);
-    setTimeout(()=>this.chord([784,1046],.4,'sine',.02),180);
-  }
-  bad(){
-    this.tone(180,.18,'sawtooth',.02);
-  }
-  footstep(){
-    this.tone(120,.03,'square',.008);
-  }
-  ui(){
-    this.tone(720,.04,'triangle',.02);
-  }
-  rain(){
-    this.tone(240,.05,'sawtooth',.004);
-  }
-  birds(){
-    this.tone(1400,.05,'triangle',.012);
-    setTimeout(()=>this.tone(1700,.04,'triangle',.01),50);
-  }
-  fireflies(){
-    this.tone(980,.03,'sine',.006);
-  }
-  startMusic(){
-    if(this.musicStarted)return;
-    this.musicStarted=true;
-    const loop=()=>{
-      if(!this.enabled)return;
-      const t=game.world?.time || 'день';
-      if(t==='утро'){
-        this.chord([392,523,659],1.8,'triangle',.012);
-      }else if(t==='день'){
-        this.chord([440,587,784],2,'sine',.01);
-      }else if(t==='вечер'){
-        this.chord([349,523,698],2.6,'triangle',.012);
-      }else{
-        this.chord([261,392,523],3.4,'sine',.008);
-      }
-      setTimeout(loop,4000);
-    };
-    loop();
-  }
-  update(dt){
-    this.ambienceTimer+=dt;
-    if(this.ambienceTimer>6){
-      this.ambienceTimer=0;
-      const w=game.world?.weather;
-      const t=game.world?.time;
-      if(w==='дождь')this.rain();
-      else if(t==='утро'||t==='день')this.birds();
-      else if(t==='вечер'||t==='ночь')this.fireflies();
-    }
-  }
-}
-class Input{
-  constructor(){this.keys={};this.meow=false;
-    addEventListener('keydown',e=>{this.keys[e.key.toLowerCase()]=true;if(e.key===' ')this.meow=true});
-    addEventListener('keyup',e=>this.keys[e.key.toLowerCase()]=false);
-  }
-  vector(){
-    let x=0,y=0,k=this.keys;
-    if(k.a||k.arrowleft)x--; if(k.d||k.arrowright)x++;
-    if(k.w||k.arrowup)y--; if(k.s||k.arrowdown)y++;
-    const l=Math.hypot(x,y)||1; return {x:x/l,y:y/l};
+  meow(){this.tone(650,.08,'sine',.08);setTimeout(()=>this.tone(470,.16,'triangle',.06),70)}
+  pickup(){[880,1175,1568].forEach((f,i)=>this.tone(f,.16,'triangle',.035,i*.06))}
+  quest(){[523,659,784,1046].forEach((f,i)=>this.tone(f,.32,'triangle',.035,i*.08))}
+  bad(){this.tone(150,.18,'sawtooth',.025)}
+  stepSound(){this.noise(.025,.006)}
+  start(){if(this.started)return;this.started=true;this.init();this.loop()}
+  loop(){
+    if(!this.enabled){setTimeout(()=>this.loop(),500);return}
+    const t=game?.time||'day';
+    const chords={
+      morning:[[392,493,659],[440,523,659],[349,523,698],[392,587,784]],
+      day:[[440,554,659],[392,493,659],[523,659,784],[349,440,587]],
+      evening:[[349,440,523],[392,493,659],[329,392,493],[293,440,587]],
+      night:[[261,392,523],[293,440,523],[246,369,493],[220,329,440]]
+    }[t]||[[392,523,659]];
+    const chord=chords[this.step%chords.length];
+    chord.forEach((f,i)=>this.tone(f,2.4,'triangle',.012,i*.03));
+    this.tone(chord[0]/2,1.4,'sine',.018,.02);
+    const melody=[chord[1],chord[2],chord[1]*1.125,chord[2]*1.125];
+    melody.forEach((f,i)=>this.tone(f,.18,'sine',.012,.45+i*.42));
+    if(t==='morning'||t==='day'){setTimeout(()=>{this.tone(1450,.05,'triangle',.018);this.tone(1750,.04,'triangle',.014,.06)},900)}
+    this.step++;setTimeout(()=>this.loop(),3200);
   }
 }
 
 class MobileControls{
   constructor(){
-    this.root=$('mobileControls'); this.zone=$('stickZone'); this.stick=$('stick');
-    this.vec={x:0,y:0}; this.active=false; this.pid=null;
-    this.bindStick(); this.bindButtons();
+    this.vec={x:0,z:0};this.active=false;this.pid=null;
+    this.zone=$('stickZone');this.stick=$('stick');this.bind();
   }
-  show(){this.root.classList.remove('hidden')} hide(){this.root.classList.add('hidden')}
-  bindStick(){
+  bind(){
     const move=e=>{
       if(!this.active||e.pointerId!==this.pid)return;
-      const r=this.zone.getBoundingClientRect(), cx=r.left+r.width/2, cy=r.top+r.height/2;
-      let dx=e.clientX-cx, dy=e.clientY-cy, len=Math.hypot(dx,dy), max=r.width*.33;
-      if(len>max){dx=dx/len*max;dy=dy/len*max;len=max}
-      this.vec={x:dx/max,y:dy/max}; this.stick.style.transform=`translate(${dx}px,${dy}px)`;
+      const r=this.zone.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;
+      let dx=e.clientX-cx,dy=e.clientY-cy,len=Math.hypot(dx,dy),max=r.width*.33;
+      if(len>max){dx=dx/len*max;dy=dy/len*max}
+      this.vec={x:dx/max,z:dy/max};this.stick.style.transform=`translate(${dx}px,${dy}px)`;
     };
     this.zone.addEventListener('pointerdown',e=>{this.active=true;this.pid=e.pointerId;this.zone.setPointerCapture(e.pointerId);move(e)});
     this.zone.addEventListener('pointermove',move);
     this.zone.addEventListener('pointerup',()=>this.reset());
     this.zone.addEventListener('pointercancel',()=>this.reset());
-  }
-  reset(){this.active=false;this.pid=null;this.vec={x:0,y:0};this.stick.style.transform='translate(0,0)'}
-  bindButtons(){
-    $('btnAction').onclick=()=>game.tryInteract();
+    $('btnAction').onclick=()=>game.interact();
     $('btnMeow').onclick=()=>game.meow();
-    $('btnInv').onclick=()=>game.ui.showInventory();
-    $('btnMap').onclick=()=>game.ui.showMap();
-    $('btnQuests').onclick=()=>game.ui.showQuests();
-    $('btnPause').onclick=()=>game.ui.showMenu(true);
+    $('btnInv').onclick=()=>game.ui.inventory();
+    $('btnQuest').onclick=()=>game.ui.quests();
+    $('btnMenu').onclick=()=>game.ui.showMenu(true);
   }
+  reset(){this.active=false;this.pid=null;this.vec={x:0,z:0};this.stick.style.transform='translate(0,0)'}
 }
 
-class Player{
-  constructor(){this.x=820;this.y=780;this.r=22;this.speed=178;this.dir=1;this.walk=0;this.meowTimer=0;
-    this.stats={satiety:100,energy:100,mood:100,curiosity:50,clean:90,fame:0};
-  }
-  update(dt,v){
-    const len=Math.hypot(v.x,v.y), low=this.stats.energy<25?.65:1;
-    if(len>.05){
-      this.x+=v.x*this.speed*low*dt;
-      this.y+=v.y*this.speed*low*dt;
-      this.dir=v.x<0?-1:v.x>0?1:this.dir;
-      this.walk+=dt*10;
-      if(Math.floor(this.walk)%7===0 && game?.audio)game.audio.footstep();
-    }
-    this.x=clamp(this.x,75,2260);this.y=clamp(this.y,110,1705);
-    this.meowTimer=Math.max(0,this.meowTimer-dt);
-    this.stats.satiety=clamp(this.stats.satiety-dt*.22,0,100);
-    this.stats.energy=clamp(this.stats.energy-dt*.13+(len<.05?dt*.35:0),0,100);
-    this.stats.mood=clamp(this.stats.mood+(this.stats.satiety<25?-dt*.35:dt*.04),0,100);
-  }
+class Input{
+  constructor(){this.keys={};addEventListener('keydown',e=>this.keys[e.key.toLowerCase()]=true);addEventListener('keyup',e=>this.keys[e.key.toLowerCase()]=false)}
+  vector(){let x=0,z=0,k=this.keys;if(k.a||k.arrowleft)x--;if(k.d||k.arrowright)x++;if(k.w||k.arrowup)z--;if(k.s||k.arrowdown)z++;const l=Math.hypot(x,z)||1;return{x:x/l,z:z/l}}
 }
 
-class NPC{constructor(d){Object.assign(this,d);this.friend=0} active(time){return !this.times||this.times.includes(time)}}
-
-class World{
-  constructor(){
-    this.w=2400;this.h=1800;this.time='утро';this.day=1;this.clock=0;this.weather='солнце';
-    this.unlockedZones=['Двор','Крыльцо','Сад','Сарай','Пруд','Кошачий уголок'];
-    this.zones=[
-      {name:'Двор',x:610,y:610,w:600,h:450},{name:'Крыльцо',x:890,y:420,w:400,h:190},{name:'Сад',x:1320,y:500,w:540,h:430},
-      {name:'Сарай',x:300,y:1080,w:390,h:290},{name:'Старый забор',x:1660,y:1020,w:500,h:270,lockedBy:'q11'},
-      {name:'Пруд',x:1440,y:1210,w:580,h:390},{name:'Колодец',x:690,y:1160,w:250,h:250,lockedBy:'q6'},
-      {name:'Лесная тропа',x:1850,y:500,w:370,h:520,lockedBy:'q7'},{name:'Поляна',x:1800,y:220,w:460,h:300,lockedBy:'q7'},
-      {name:'Теплица',x:300,y:220,w:380,h:270,lockedBy:'q19'},{name:'Кошачий уголок',x:1040,y:790,w:250,h:190},
-      {name:'Чердак',x:960,y:300,w:150,h:80,lockedBy:'q15'},{name:'Подвал',x:830,y:560,w:180,h:85,lockedBy:'q16'},
-      {name:'Крыша',x:890,y:260,w:410,h:115,lockedBy:'q17'},{name:'Тайная тропа',x:470,y:650,w:220,h:520,lockedBy:'q17'}
-    ];
-    this.items=[
-      {id:'bowl',name:'миска',x:760,y:710,emoji:'🥣',quest:'q1'},
-      {id:'cassette',name:'старая кассета',x:430,y:1190,emoji:'📼',quest:'q2'},
-      {id:'pick',name:'медиатор',x:1585,y:1325,emoji:'🎸',quest:'q3'},
-      {id:'stickers',name:'наклейки',x:1180,y:930,emoji:'⭐',quest:'q5'},
-      {id:'moonbell',name:'лунный колокольчик',x:770,y:1250,emoji:'🔔',quest:'q6',night:true},
-      {id:'leaf',name:'редкий лист',x:1980,y:610,emoji:'🍃',quest:'q7'},
-      {id:'pages',name:'страницы дневника',x:1030,y:330,emoji:'📜',quest:'q8'},
-      {id:'parts',name:'детали фонаря',x:525,y:1230,emoji:'🔩',quest:'q9'},
-      {id:'button',name:'пуговица',x:650,y:980,emoji:'🔘',quest:'q10'},
-      {id:'greenhouseKey',name:'ключ от теплицы',x:1100,y:840,emoji:'🗝️',quest:'q19',locked:true},
-      {id:'sunbell',name:'солнечный колокольчик',x:460,y:320,emoji:'🌞',quest:'q20',final:true,locked:true},
-    ];
-    this.fireflies=Array.from({length:50},()=>({x:1780+Math.random()*420,y:230+Math.random()*280,a:Math.random()*6}));
-    this.clouds=Array.from({length:9},()=>({x:Math.random()*2400,y:80+Math.random()*350,s:.5+Math.random()*1.2}));
-  }
-  update(dt){
-    this.clock+=dt;
-    if(this.clock>50){
-      this.clock=0;
-      const order=['утро','день','вечер','ночь']; this.time=order[(order.indexOf(this.time)+1)%4];
-      if(this.time==='утро'){this.day++; this.weather=pick(['солнце','облачно','дождь','ветер','туман']); game.toast(`День ${this.day}: ${this.event()}`)}
-    }
-    for(const f of this.fireflies)f.a+=dt*2;
-    for(const c of this.clouds){c.x+=dt*8*c.s;if(c.x>2500)c.x=-200}
-  }
-  event(){return pick(['новая коробка во дворе','дождливый вечер','сильный ветер','светлячки на поляне','музыка на крыльце','странный звук в сарае','редкий закат','ночной туман'])}
-  zoneAt(p){return this.zones.find(z=>p.x>z.x&&p.x<z.x+z.w&&p.y>z.y&&p.y<z.y+z.h)?.name||'Двор'}
-}
-
-class QuestSystem{
-  constructor(){
-    const qs=[
-      ['q1','Миска Рыжика','Найди миску у крыльца','bowl',null],
-      ['q2','Старая кассета','Отдай Лёхе кассету из сарая','cassette','Лёха'],
-      ['q3','Пропавший медиатор','Отдай Игорю медиатор у пруда','pick','Игорь'],
-      ['q4','Фото со светлячками','Ночью поговори с Настей на поляне',null,'Настя'],
-      ['q5','Потерянные наклейки','Собери наклейки для Лизы','stickers','Лиза'],
-      ['q6','Колокольчик луны','Найди лунный колокольчик ночью','moonbell','Маг'],
-      ['q7','Лесная тропа','Принеси Соне редкий лист','leaf','Соня'],
-      ['q8','Странные записи','Отдай Нэне страницы дневника','pages','Нэна'],
-      ['q9','Сломанный фонарик','Принеси Кристине детали фонаря','parts','Кристина'],
-      ['q10','Коробка сокровищ','Принеси Дане пуговицу','button','Даня'],
-      ['q11','Старый забор','Поговори с Прохором у забора',null,'Прохор'],
-      ['q12','Первый уютный уголок','Купи первое улучшение в кошачий уголок',null,null],
-      ['q13','Прудовая мелодия','Сыграй мини-игру с Игорем у пруда',null,'Игорь'],
-      ['q14','Ночная прогулка','Поговори с Магом ночью у колодца',null,'Маг'],
-      ['q15','Тайна чердака','Осмотри чердак после записей Нэны',null,null],
-      ['q16','Подвальная находка','Осмотри подвал после фонаря',null,null],
-      ['q17','Кошачья крыша','Поднимись на крышу после ремонта забора',null,null],
-      ['q18','Вечер у костра','Собери 6 друзей и поговори с Лёхой вечером',null,'Лёха'],
-      ['q19','Ключ от теплицы','Получи доверие 10 друзей и возьми ключ','greenhouseKey',null],
-      ['q20','Солнечный колокольчик','Открой теплицу и найди Солнечный колокольчик','sunbell',null],
-      ['q21','Ночной чай','Вечером поговори с Лёхой на крыльце',null,'Лёха'],
-      ['q22','Дождливый вечер','Поговори с Настей во время дождя',null,'Настя'],
-      ['q23','Музыкальный двор','Сыграй концерт с Игорем 2 раза',null,'Игорь'],
-      ['q24','Свет фонаря','Посети двор ночью после ремонта фонаря',null,'Кристина'],
-      ['q25','Большой уют','Купи 4 улучшения кошачьего уголка',null,null],
-    ];
-    this.quests=qs.map((q,i)=>({id:q[0],title:q[1],hint:q[2],item:q[3],npc:q[4],done:false,order:i+1}));
-  }
-  active(){return this.quests.find(q=>!q.done)||this.quests.at(-1)}
-  done(id){return !!this.quests.find(q=>q.id===id)?.done}
-  progress(){return this.quests.filter(q=>q.done).length/this.quests.length}
-  complete(id){
-    const q=this.quests.find(q=>q.id===id);
-    if(q&&!q.done){q.done=true; game.player.stats.fame+=6; game.audio.quest(); game.ach.check(); game.unlockByQuest(id); game.toast(`Квест выполнен: ${q.title}`); return true}
-    return false
-  }
-}
-
-class Inventory{
-  constructor(){
-    this.items=[];
-    this.db={
-      bowl:{id:'bowl',name:'миска',emoji:'🥣',use:'Поставить у кошачьего уголка',target:'zone:Кошачий уголок',quest:'q1'},
-      cassette:{id:'cassette',name:'старая кассета',emoji:'📼',use:'Отдать Лёхе',target:'npc:Лёха',quest:'q2'},
-      pick:{id:'pick',name:'медиатор',emoji:'🎸',use:'Отдать Игорю',target:'npc:Игорь',quest:'q3'},
-      stickers:{id:'stickers',name:'наклейки',emoji:'⭐',use:'Отдать Лизе',target:'npc:Лиза',quest:'q5'},
-      moonbell:{id:'moonbell',name:'лунный колокольчик',emoji:'🔔',use:'Показать Магу ночью',target:'npc:Маг',quest:'q6'},
-      leaf:{id:'leaf',name:'редкий лист',emoji:'🍃',use:'Отдать Соне',target:'npc:Соня',quest:'q7'},
-      pages:{id:'pages',name:'страницы дневника',emoji:'📜',use:'Отдать Нэне',target:'npc:Нэна',quest:'q8'},
-      parts:{id:'parts',name:'детали фонаря',emoji:'🔩',use:'Отдать Кристине',target:'npc:Кристина',quest:'q9'},
-      button:{id:'button',name:'пуговица',emoji:'🔘',use:'Отдать Дане',target:'npc:Даня',quest:'q10'},
-      greenhouseKey:{id:'greenhouseKey',name:'ключ от теплицы',emoji:'🗝️',use:'Открыть теплицу',target:'zone:Теплица',quest:'q19'},
-      sunbell:{id:'sunbell',name:'солнечный колокольчик',emoji:'🌞',use:'Завершить тайну теплицы',target:'zone:Теплица',quest:'q20'},
-      toy:{id:'toy',name:'игрушечная мышь',emoji:'🐁',use:'Положить в уголок',target:'zone:Кошачий уголок',quest:'q25'},
-      ribbon:{id:'ribbon',name:'ленточка',emoji:'🎀',use:'Украсить уголок',target:'zone:Кошачий уголок',quest:'q25'},
-      shiny:{id:'shiny',name:'блестящий камешек',emoji:'💎',use:'Оставить как декор',target:'zone:Кошачий уголок',quest:'q25'}
-    };
-  }
-  normalize(){
-    this.items=this.items.map(x=>{
-      if(typeof x==='string'){
-        const found=Object.values(this.db).find(i=>i.id===x||i.name===x);
-        return found ? {...found} : {id:x,name:x,emoji:'🎒',use:'Осмотреть',target:null,quest:null};
-      }
-      const db=this.db[x.id] || Object.values(this.db).find(i=>i.name===x.name);
-      return db ? {...db,...x} : x;
-    });
-  }
-  add(it){
-    this.normalize();
-    const db=this.db[it.id] || Object.values(this.db).find(x=>x.name===it.name) || it;
-    if(!this.items.some(x=>x.id===db.id||x.name===db.name)){
-      this.items.push({...db});
-      game.audio.pickup();
-      game.toast(`Найдено: ${db.emoji||'🎒'} ${db.name}`);
-    }
-  }
-  hasId(id){this.normalize();return this.items.some(x=>x.id===id)}
-  hasName(name){this.normalize();return this.items.some(x=>x.name===name)}
-  has(x){return this.hasId(x)||this.hasName(x)}
-  removeById(id){
-    this.normalize();
-    const before=this.items.length;
-    this.items=this.items.filter(x=>x.id!==id);
-    return this.items.length!==before;
-  }
-  get(id){
-    this.normalize();
-    return this.items.find(x=>x.id===id);
-  }
-  useItem(id){
-    this.normalize();
-    const item=this.get(id);
-    if(!item){game.toast('Предмет не найден');return false}
-    const zone=game.world.zoneAt(game.player);
-    const nearest=game.nearestNPC();
-    const nearNpc=nearest && nearest.d<130 ? nearest.n : null;
-
-    let ok=false;
-    if(item.target?.startsWith('npc:')){
-      const name=item.target.split(':')[1];
-      ok=nearNpc && nearNpc.name===name;
-      if(!ok){game.toast(`${item.emoji} ${item.name}: подойди к ${name}`);game.audio.bad();return false}
-      game.talk(nearNpc,true,id);
-      return true;
-    }
-    if(item.target?.startsWith('zone:')){
-      const targetZone=item.target.split(':')[1];
-      ok=zone===targetZone;
-      if(!ok){game.toast(`${item.emoji} ${item.name}: нужно место «${targetZone}»`);game.audio.bad();return false}
-      if(item.id==='bowl'){game.quest.complete('q1');game.quest.complete('q12');this.removeById(item.id);game.upgrades.bought.push('bowl');game.toast('Миска поставлена в кошачьем уголке');return true}
-      if(item.id==='greenhouseKey'){game.quest.complete('q19');game.world.unlockedZones.push('Теплица');this.removeById(item.id);game.toast('Теплица открыта');return true}
-      if(item.id==='sunbell'){game.quest.complete('q20');game.ach.unlock('Настоящий хозяин двора');game.toast('Солнечный колокольчик вернул уют дому');return true}
-      if(item.quest){game.quest.complete(item.quest);this.removeById(item.id);return true}
-    }
-    game.toast(`${item.emoji} ${item.name}: пока некуда применить`);
-    return false;
-  }
-  useNearest(){
-    this.normalize();
-    const q=game.quest.active();
-    if(q?.item && this.hasId(q.item)){
-      this.useItem(q.item);
-      return;
-    }
-    const nearest=game.nearestNPC();
-    if(nearest&&nearest.d<130){
-      const npc=nearest.n;
-      const item=this.items.find(i=>i.target===`npc:${npc.name}`);
-      if(item){this.useItem(item.id);return}
-    }
-    const zone=game.world.zoneAt(game.player);
-    const item=this.items.find(i=>i.target===`zone:${zone}`);
-    if(item){this.useItem(item.id);return}
-    game.toast('Нет подходящего предмета для этого места');
-  }
-}
-
-class UpgradeSystem{
-  constructor(){this.list=[
-    {id:'bowl',name:'Миска',cost:0,emoji:'🥣'},
-    {id:'pillow',name:'Подушка',cost:8,emoji:'🛏️'},
-    {id:'box',name:'Коробка',cost:10,emoji:'📦'},
-    {id:'toy',name:'Игрушечная мышь',cost:12,emoji:'🐁'},
-    {id:'lamp',name:'Фонарик',cost:16,emoji:'🏮'},
-    {id:'flowers',name:'Цветы',cost:18,emoji:'🌸'},
-    {id:'roof',name:'Навес',cost:22,emoji:'⛱️'},
-    {id:'house',name:'Мини-домик',cost:30,emoji:'🏠'},
-  ];this.bought=[]}
-  buy(id){
-    const u=this.list.find(x=>x.id===id); if(!u||this.bought.includes(id))return;
-    if(game.player.stats.fame<u.cost){game.toast('Не хватает кошачьей славы');game.audio.bad();return}
-    game.player.stats.fame-=u.cost; this.bought.push(id); game.toast(`Улучшение: ${u.name}`);
-    if(id==='bowl')game.quest.complete('q12');
-    if(this.bought.length>=4)game.quest.complete('q25');
-  }
-}
-
-class MiniGameSystem{
-  constructor(){
-    this.box=$('minigame'); this.area=$('miniArea'); $('miniExit').onclick=()=>this.close();
-  }
-  open(title,text){game.paused=true;this.box.classList.remove('hidden');$('miniTitle').textContent=title;$('miniText').textContent=text;this.area.innerHTML=''}
-  close(){this.box.classList.add('hidden');game.paused=false}
-  fishing(){
-    this.open('🎣 Рыбалка','Тапни по рыбке 5 раз.');
-    let score=0;
-    const spawn=()=>{
-      this.area.innerHTML=''; const el=document.createElement('div'); el.className='target'; el.textContent='🐟';
-      el.style.left=Math.random()*80+'%'; el.style.top=Math.random()*65+'%';
-      el.onclick=()=>{score++;game.audio.pickup(); if(score>=5){game.toast('Прудовая мелодия готова');game.quest.complete('q13');this.close()} else spawn()};
-      this.area.appendChild(el);
-    }; spawn();
-  }
-  fireflies(){
-    this.open('✨ Светлячки','Поймай 7 светлячков для фото Насти.');
-    let score=0;
-    for(let i=0;i<7;i++){
-      const el=document.createElement('div'); el.className='target'; el.textContent='✨';
-      el.style.left=Math.random()*82+'%'; el.style.top=Math.random()*65+'%';
-      el.onclick=()=>{el.remove();score++;game.audio.pickup(); if(score>=7){game.quest.complete('q4');this.close()}};
-      this.area.appendChild(el);
-    }
-  }
-  concert(){
-    this.open('🎵 Мяу-концерт','Тапай по нотам, пока они не исчезли.');
-    let score=0, total=0;
-    const timer=setInterval(()=>{
-      if(this.box.classList.contains('hidden')){clearInterval(timer);return}
-      total++; const el=document.createElement('div'); el.className='note';
-      el.style.left=Math.random()*85+'%'; el.style.top=Math.random()*70+'%';
-      el.onclick=()=>{score++;game.audio.meow();el.remove()};
-      this.area.appendChild(el); setTimeout(()=>el.remove(),1200);
-      if(total>=12){clearInterval(timer);setTimeout(()=>{if(score>=7){
-          game.quest.complete('q13');
-          game.gameConcerts=(game.gameConcerts||0)+1;
-          if(game.gameConcerts>=2)game.quest.complete('q23');
-          game.toast('Игорь доволен концертом!')
-        }else game.toast('Попробуй концерт ещё раз');this.close()},1400)}
-    },420);
-  }
-}
-
-class AchievementSystem{
-  constructor(){this.list=['Первый мяу','Первый друг','Рыбак','Исследователь','Ночной кот','Мастер прыжков','Музыкальный кот','Друг Лёхи','Друг Игоря','Друг Насти','Друг Лизы','Друг Мага','Друг Сони','Друг Нэны','Друг Кристины','Друг Дани','Друг Прохора','Все друзья рядом','Тайна теплицы','Настоящий хозяин двора','Музыкант двора','Король светлячков','Хранитель уюта'];this.unlocked=[]}
-  unlock(a){if(!this.unlocked.includes(a)){this.unlocked.push(a);game.toast(`🏆 ${a}`)}}
-  check(){
-    const c=game.quest.quests.filter(q=>q.done).length;
-    if(c>=5)this.unlock('Исследователь');
-    if(game.world.time==='ночь')this.unlock('Ночной кот');
-    if(game.quest.done('q20')){this.unlock('Тайна теплицы');this.unlock('Настоящий хозяин двора')}
-    if(game.quest.done('q23'))this.unlock('Музыкант двора');
-    if(game.quest.done('q4'))this.unlock('Король светлячков');
-    if(game.quest.done('q25'))this.unlock('Хранитель уюта')
-    if(game.npcs.every(n=>n.friend>=1))this.unlock('Все друзья рядом');
-  }
-}
-
-class SaveSystem{
-  save(){
-    const data={p:{x:game.player.x,y:game.player.y,stats:game.player.stats},inv:game.inv.items,quests:game.quest.quests.map(q=>q.done),ach:game.ach.unlocked,npc:game.npcs.map(n=>n.friend),world:{time:game.world.time,day:game.world.day,weather:game.world.weather,unlockedZones:game.world.unlockedZones},upgrades:game.upgrades.bought};
-    localStorage.setItem('ryzhik-v2-save',JSON.stringify(data)); game.toast('Сохранено');
-  }
-  load(){
-    const s=localStorage.getItem('ryzhik-v2-save')||localStorage.getItem('ryzhik-save'); if(!s)return false;
-    const d=JSON.parse(s); if(d.p){game.player.x=d.p.x;game.player.y=d.p.y;game.player.stats=d.p.stats}
-    game.inv.items=d.inv||[]; game.inv.normalize(); d.quests?.forEach((v,i)=>game.quest.quests[i]&&(game.quest.quests[i].done=v));
-    game.ach.unlocked=d.ach||[]; d.npc?.forEach((v,i)=>game.npcs[i]&&(game.npcs[i].friend=v));
-    Object.assign(game.world,d.world||{}); game.upgrades.bought=d.upgrades||[]; return true
-  }
-}
-
-class UIManager{
+class UI{
   constructor(){this.bind()}
   bind(){
-    $('newGameBtn').onclick=()=>{localStorage.removeItem('ryzhik-v2-save');game.start(false,true)};
-    $('continueBtn').onclick=()=>game.start(true);
-    $('saveBtn').onclick=()=>game.save.save();
-    $('achBtn').onclick=()=>this.showAchievements();
-    $('upgradesBtn').onclick=()=>this.showUpgrades();
-    $('aboutBtn').onclick=()=>this.modal('Об игре','<p>Версия 2: добавлены мини-игры, улучшения, цепочка квестов, более живая графика и прогресс.</p>');
+    $('newGame').onclick=()=>game.start(true);
+    $('continueGame').onclick=()=>game.start(false);
+    $('saveGame').onclick=()=>game.save();
+    $('inventoryBtn').onclick=()=>this.inventory();
+    $('questsBtn').onclick=()=>this.quests();
+    $('musicBtn').onclick=()=>{game.music.enabled=!game.music.enabled;$('musicBtn').textContent='Музыка: '+(game.music.enabled?'вкл':'выкл')};
     $('closeModal').onclick=()=>this.closeModal();
     $('dialogue').onclick=()=>this.closeDialogue();
   }
-  showMenu(pause=false){$('menu').classList.remove('hidden');if(pause)game.paused=true}
+  showMenu(p=false){$('menu').classList.remove('hidden');if(p)game.paused=true}
   hideMenu(){$('menu').classList.add('hidden')}
   modal(t,html){$('modalTitle').textContent=t;$('modalContent').innerHTML=html;$('modal').classList.remove('hidden');game.paused=true}
   closeModal(){$('modal').classList.add('hidden');game.paused=false}
-  update(){
-    const s=game.player.stats; $('satiety').textContent=s.satiety|0;$('energy').textContent=s.energy|0;$('mood').textContent=s.mood|0;$('fame').textContent=s.fame|0;
-    $('timeWeather').textContent=`${game.world.time} • ${game.world.weather} • ${game.world.zoneAt(game.player)}`;
-    const q=game.quest.active(); $('questTitle').textContent=`${q.order}. ${q.title}`;$('questHint').textContent=q.hint;$('questProgress').style.width=(game.quest.progress()*100)+'%';
-  }
-  showInventory(){
-    game.inv.normalize();
-    const items=game.inv.items;
-    const html = items.length
-      ? `<div class="invGrid">${items.map(i=>`
-          <button class="invCard" onclick="game.inv.useItem('${i.id}');game.ui.showInventory()">
-            <span class="invBig">${i.emoji||'🎒'}</span>
-            <b>${i.name}</b>
-            <small>${i.use||'Осмотреть'}</small>
-          </button>`).join('')}</div>
-         <button onclick="game.inv.useNearest();game.ui.closeModal()">Использовать подходящий предмет рядом</button>`
-      : '<p>Пока пусто. Подбирай предметы на карте.</p>';
-    this.modal('🎒 Инвентарь', html);
-  }
-  showQuests(){this.modal('📜 Квесты',game.quest.quests.map(q=>`<div class="card ${q.done?'done':''}">${q.done?'✅':'⬜'} <b>${q.order}. ${q.title}</b><br><small>${q.hint}</small></div>`).join(''))}
-  showMap(){this.modal('🗺️ Карта',`<p>Текущая зона: <b>${game.world.zoneAt(game.player)}</b></p>`+game.world.zones.map(z=>`<div class="card">${game.world.unlockedZones.includes(z.name)?'🔓':'🔒'} ${z.name}</div>`).join(''))}
-  showAchievements(){this.modal('🏆 Достижения',game.ach.list.map(a=>`<div class="card">${game.ach.unlocked.includes(a)?'✅':'⬜'} ${a}</div>`).join(''))}
-  showUpgrades(){
-    this.modal('🐾 Кошачий уголок',`<p>Кошачья слава: <b>${game.player.stats.fame|0}</b></p>`+game.upgrades.list.map(u=>`<div class="card upgrade"><span>${u.emoji} <b>${u.name}</b><br><small>Цена: ${u.cost} славы</small></span><button onclick="game.upgrades.buy('${u.id}');game.ui.showUpgrades()">${game.upgrades.bought.includes(u.id)?'Есть':'Купить'}</button></div>`).join(''))
-  }
-  dialogue(n,text){
-    $('speaker').textContent=n.name;
-    $('dialogueText').textContent=text;
-    $('portrait').style.background=n.color;
-    $('portrait').innerHTML=this.portraitSVG(n);
-    $('dialogue').classList.remove('hidden');
-    game.paused=true
-  }
-  portraitSVG(n){
-    const hair=n.hair||'#8b5a2b', cloth=n.color||'#777', hat=n.hat;
-    const glasses=n.glasses?`<circle cx="34" cy="46" r="7" fill="none" stroke="#1d1d1d" stroke-width="2"/><circle cx="50" cy="46" r="7" fill="none" stroke="#1d1d1d" stroke-width="2"/><path d="M41 46 L43 46" stroke="#1d1d1d" stroke-width="2"/>`:'';
-    const tattoo=n.tattoo?`<path d="M22 74 q8 -8 16 0 M52 74 q8 -8 16 0" stroke="#20304a" stroke-width="2" fill="none"/>`:'';
-    const hatSvg=hat?`<path d="M18 33 L43 5 L68 33 Z" fill="#302044"/><ellipse cx="43" cy="34" rx="32" ry="8" fill="#241832"/>`:'';
-    return `<svg viewBox="0 0 86 86" xmlns="http://www.w3.org/2000/svg">
-      <defs><filter id="s"><feDropShadow dx="0" dy="4" stdDeviation="3" flood-opacity=".35"/></filter></defs>
-      <rect width="86" height="86" rx="18" fill="rgba(255,255,255,.18)"/>
-      <ellipse cx="43" cy="78" rx="28" ry="9" fill="rgba(0,0,0,.22)"/>
-      <path d="M20 82 Q24 58 43 58 Q62 58 67 82 Z" fill="${cloth}" filter="url(#s)"/>
-      <circle cx="43" cy="43" r="22" fill="#f0ba8e" filter="url(#s)"/>
-      <path d="M22 38 Q28 14 44 18 Q61 16 66 39 Q50 30 22 38 Z" fill="${hair}"/>
-      ${hatSvg}
-      <circle cx="35" cy="46" r="2.8" fill="#1b1b1b"/><circle cx="51" cy="46" r="2.8" fill="#1b1b1b"/>
-      ${glasses}
-      <path d="M35 58 Q43 64 52 58" stroke="#883c3c" stroke-width="2" fill="none" stroke-linecap="round"/>
-      ${tattoo}
-    </svg>`;
-  }
+  toast(t){const el=$('toast');el.textContent=t;el.classList.remove('hidden');clearTimeout(this.tt);this.tt=setTimeout(()=>el.classList.add('hidden'),1800)}
+  dialogue(n,text){$('speaker').textContent=n.name;$('dialogueText').textContent=text;$('portrait').innerHTML=this.portrait(n);$('dialogue').classList.remove('hidden');game.paused=true}
   closeDialogue(){$('dialogue').classList.add('hidden');game.paused=false}
+  portrait(n){
+    const hair=n.hair, cloth=n.color;
+    const hat=n.hat?`<path d="M18 34 L43 6 L68 34 Z" fill="#22142d"/><ellipse cx="43" cy="35" rx="34" ry="8" fill="#160d20"/>`:'';
+    const glasses=n.glasses?`<circle cx="34" cy="46" r="7" fill="none" stroke="${n.name==='Даня'?'#e22':'#111'}" stroke-width="2"/><circle cx="52" cy="46" r="7" fill="none" stroke="${n.name==='Даня'?'#e22':'#111'}" stroke-width="2"/>`:'';
+    return `<svg viewBox="0 0 86 86"><rect width="86" height="86" rx="18" fill="rgba(255,255,255,.18)"/><ellipse cx="43" cy="78" rx="28" ry="8" fill="rgba(0,0,0,.24)"/><path d="M19 84 Q25 58 43 58 Q62 58 68 84 Z" fill="${cloth}"/><circle cx="43" cy="43" r="22" fill="#f1bb8d"/><path d="M22 39 Q26 18 44 18 Q62 18 66 39 Q48 30 22 39 Z" fill="${hair}"/>${hat}<circle cx="35" cy="46" r="2.6"/><circle cx="51" cy="46" r="2.6"/>${glasses}<path d="M35 58 Q43 64 52 58" stroke="#783838" stroke-width="2" fill="none"/></svg>`;
+  }
+  inventory(){
+    const html=game.inventory.length?`<div class="invGrid">${game.inventory.map(i=>`<button class="invCard" onclick="game.useItem('${i.id}');game.ui.inventory()"><span class="invBig">${i.emoji}</span><b>${i.name}</b><small>${i.use}</small></button>`).join('')}</div>`:'<p>Пока пусто.</p>';
+    this.modal('🎒 Инвентарь',html);
+  }
+  quests(){this.modal('📜 Квесты',game.quests.map(q=>`<div class="card">${q.done?'✅':'⬜'} <b>${q.title}</b><br><small>${q.hint}</small></div>`).join(''))}
+  update(){
+    $('satiety').textContent=game.stats.satiety|0;$('energy').textContent=game.stats.energy|0;$('mood').textContent=game.stats.mood|0;$('fame').textContent=game.stats.fame|0;
+    $('timeWeather').textContent=`${game.timeRu()} • ${game.weather}`;
+    const q=game.quests.find(q=>!q.done)||game.quests.at(-1);$('questTitle').textContent=q.title;$('questHint').textContent=q.hint;
+    $('actionHint').textContent=game.actionHint();
+  }
 }
 
-class Renderer{
-  constructor(c){this.c=c;this.ctx=c.getContext('2d');this.resize();addEventListener('resize',()=>this.resize())}
-  resize(){this.c.width=innerWidth*devicePixelRatio;this.c.height=innerHeight*devicePixelRatio;this.ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0)}
-  render(){
-    const ctx=this.ctx,p=game.player,cam={x:clamp(p.x-innerWidth/2,0,game.world.w-innerWidth),y:clamp(p.y-innerHeight/2,0,game.world.h-innerHeight)};
-    ctx.clearRect(0,0,innerWidth,innerHeight);ctx.save();ctx.translate(-cam.x,-cam.y);
-    this.drawParallaxSky(ctx,cam);this.drawGrass(ctx);this.drawGroundDetails(ctx);this.drawPaths(ctx);this.drawCloudShadows(ctx);this.drawWorld(ctx);this.drawItems(ctx);game.npcs.forEach(n=>this.drawHumanNPC(ctx,n));this.drawCat(ctx,p);this.drawFloatingParticles(ctx);this.drawFireflies(ctx);ctx.restore();
-    this.drawLightingOverlay(ctx);this.drawMiniMap(ctx);
-  }
-  round(ctx,x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fill();ctx.stroke()}
-  drawParallaxSky(ctx,cam){
-    ctx.save();
-    const t=game.world.time;
-    let top='#9bd7ff', bot='#f7d889';
-    if(t==='вечер'){top='#ff9a6b';bot='#ffd27b'}
-    if(t==='ночь'){top='#19224d';bot='#35507d'}
-    const g=ctx.createLinearGradient(cam.x,cam.y,cam.x,cam.y+innerHeight);
-    g.addColorStop(0,top); g.addColorStop(1,bot);
-    ctx.fillStyle=g;
-    ctx.fillRect(cam.x,cam.y,innerWidth,innerHeight);
-    // distant soft hills
-    ctx.fillStyle=t==='ночь'?'rgba(18,45,55,.55)':'rgba(91,143,91,.45)';
-    for(let i=0;i<5;i++){
-      ctx.beginPath();
-      ctx.ellipse(cam.x+200+i*390-(cam.x*.08%260), cam.y+innerHeight*.78+Math.sin(i)*20, 300, 90, 0, 0, 7);
-      ctx.fill();
-    }
-    // clouds in screen parallax
-    for(const c of game.world.clouds){
-      const x=(c.x-cam.x*.18), y=c.y-cam.y*.05;
-      ctx.fillStyle='rgba(255,255,255,.55)';
-      ctx.beginPath();
-      ctx.ellipse(x,y,70*c.s,25*c.s,0,0,7);
-      ctx.ellipse(x+45*c.s,y+8,55*c.s,21*c.s,0,0,7);
-      ctx.ellipse(x-45*c.s,y+10,50*c.s,18*c.s,0,0,7);
-      ctx.fill();
-    }
-    ctx.restore();
-  }
-  drawGrass(ctx){
-    const g=ctx.createLinearGradient(0,0,0,game.world.h);
-    g.addColorStop(0,'#9bdc70'); g.addColorStop(.45,'#78bd5c'); g.addColorStop(1,'#5d9f4d');
-    ctx.fillStyle=g; ctx.fillRect(0,0,game.world.w,game.world.h);
-    // soft patches
-    for(let i=0;i<90;i++){
-      const x=(i*263)%game.world.w, y=(i*419)%game.world.h;
-      ctx.fillStyle=i%2?'rgba(255,255,255,.06)':'rgba(42,102,52,.10)';
-      ctx.beginPath(); ctx.ellipse(x,y,90+(i%7)*18,38+(i%5)*10,(i%9)*.3,0,7); ctx.fill();
-    }
-    // individual grass strokes
-    const sway=Math.sin(performance.now()/700)*2;
-    for(let i=0;i<1400;i++){
-      const x=(i*137)%game.world.w, y=(i*277)%game.world.h;
-      ctx.strokeStyle=i%3?'rgba(70,130,58,.72)':'rgba(183,231,130,.65)';
-      ctx.lineWidth=1+(i%2);
-      ctx.beginPath(); ctx.moveTo(x,y+8); ctx.quadraticCurveTo(x+sway+(i%5)-2,y+2,x+(i%3)-1,y-6-(i%6)); ctx.stroke();
-    }
-  }
-  drawGroundDetails(ctx){
-    // stones, mushrooms, fallen leaves
-    for(let i=0;i<130;i++){
-      const x=(i*191)%game.world.w, y=(i*313)%game.world.h;
-      if(i%4===0){ctx.fillStyle='#c6b28d';ctx.beginPath();ctx.ellipse(x,y,8,5,(i%5),0,7);ctx.fill();}
-      else if(i%7===0){ctx.fillStyle='#e05f4b';ctx.beginPath();ctx.arc(x,y,6,Math.PI,0);ctx.fill();ctx.fillStyle='#f3e2bc';ctx.fillRect(x-2,y,4,9);}
-      else {ctx.fillStyle=['#d58b41','#f2c85b','#bf6b3a'][i%3];ctx.beginPath();ctx.ellipse(x,y,8,3,(i%9)*.5,0,7);ctx.fill();}
-    }
-  }
-  drawPaths(ctx){
-    ctx.save();
-    ctx.strokeStyle='rgba(183,132,74,.55)';
-    ctx.lineWidth=54; ctx.lineCap='round'; ctx.lineJoin='round';
-    ctx.beginPath();
-    ctx.moveTo(1030,720); ctx.lineTo(1030,540); ctx.lineTo(520,1210); ctx.moveTo(1030,720); ctx.lineTo(1600,1330);
-    ctx.moveTo(1030,720); ctx.lineTo(1420,650); ctx.lineTo(1980,650); ctx.lineTo(2010,360);
-    ctx.moveTo(1030,720); ctx.lineTo(1780,1120);
-    ctx.stroke();
-    ctx.strokeStyle='rgba(255,235,170,.25)'; ctx.lineWidth=18; ctx.stroke();
-    ctx.restore();
-  }
-  drawCloudShadows(ctx){ctx.fillStyle='rgba(255,255,255,.12)';for(const c of game.world.clouds){ctx.beginPath();ctx.ellipse(c.x,c.y,90*c.s,30*c.s,0,0,7);ctx.fill()}}
-  drawWorld(ctx){this.drawDecor(ctx);this.drawHouse(ctx,820,250);this.drawBarn(ctx,300,1080);this.drawGreenhouse(ctx,300,230);this.drawPond(ctx,1460,1230);this.drawFence(ctx,1680,1040);this.drawTrees(ctx);this.drawFlowers(ctx);this.drawWell(ctx,720,1190);this.drawCatCorner(ctx,1050,800);this.drawCampfire(ctx,1900,360)}
-  drawDecor(ctx){
-    ctx.save();
-    for(let i=0;i<38;i++){
-      const x=180+(i*229)%2080, y=210+(i*317)%1430;
-      ctx.fillStyle='rgba(80,55,35,.18)';
-      ctx.beginPath(); ctx.ellipse(x,y,34+(i%5)*8,10+(i%3)*4,(i%7)*.4,0,7); ctx.fill();
-      if(i%4===0){ctx.fillStyle='#d99a4a';ctx.fillRect(x-18,y-18,36,24);ctx.strokeStyle='#6b3b20';ctx.strokeRect(x-18,y-18,36,24)}
-      if(i%5===0){ctx.fillStyle='#fff3';ctx.beginPath();ctx.arc(x+20,y-20,8,0,7);ctx.fill()}
-    }
-    // string lights
-    ctx.strokeStyle='rgba(80,45,25,.65)'; ctx.lineWidth=4; ctx.beginPath(); ctx.moveTo(850,610); ctx.quadraticCurveTo(1250,520,1600,650); ctx.stroke();
-    for(let i=0;i<9;i++){const x=880+i*88,y=600-Math.sin(i*.8)*35;ctx.fillStyle='#ffd66b';ctx.beginPath();ctx.arc(x,y,8,0,7);ctx.fill()}
-    ctx.restore();
-  }
-  drawHouse(ctx,x,y){
-    ctx.save();
-    ctx.shadowColor='rgba(0,0,0,.35)'; ctx.shadowBlur=24; ctx.shadowOffsetY=18;
-    // base
-    const wall=ctx.createLinearGradient(x,y+130,x,y+420);
-    wall.addColorStop(0,'#c97843'); wall.addColorStop(1,'#8e4e31');
-    ctx.fillStyle=wall; ctx.strokeStyle='#5b2b1b'; ctx.lineWidth=6;
-    this.round(ctx,x,y+130,420,280,22);
-    // roof
-    const roof=ctx.createLinearGradient(x,y,x,y+160);
-    roof.addColorStop(0,'#8e3d2c'); roof.addColorStop(1,'#5f261d');
-    ctx.fillStyle=roof;
-    ctx.beginPath(); ctx.moveTo(x-38,y+145); ctx.lineTo(x+210,y-8); ctx.lineTo(x+458,y+145); ctx.closePath(); ctx.fill(); ctx.stroke();
-    // roof tiles
-    ctx.strokeStyle='rgba(255,255,255,.12)'; ctx.lineWidth=3;
-    for(let i=0;i<8;i++){ctx.beginPath();ctx.moveTo(x+20+i*50,y+112);ctx.lineTo(x+80+i*30,y+47);ctx.stroke();}
-    // windows glow
-    const glow=game.world.time==='ночь'||game.world.time==='вечер';
-    for(let i=0;i<3;i++){
-      const wx=x+65+i*125, wy=y+190;
-      if(glow){ctx.shadowColor='#ffd36d';ctx.shadowBlur=18;ctx.fillStyle='#ffd36d';}
-      else {ctx.shadowBlur=0;ctx.fillStyle='#aee0ff';}
-      ctx.fillRect(wx,wy,62,76); ctx.shadowBlur=0; ctx.strokeStyle='#4e2b1c'; ctx.lineWidth=4; ctx.strokeRect(wx,wy,62,76);
-      ctx.beginPath();ctx.moveTo(wx+31,wy);ctx.lineTo(wx+31,wy+76);ctx.moveTo(wx,wy+38);ctx.lineTo(wx+62,wy+38);ctx.stroke();
-    }
-    // door and porch
-    ctx.fillStyle='#5d3724'; ctx.fillRect(x+176,y+282,88,128); ctx.strokeStyle='#311b12'; ctx.strokeRect(x+176,y+282,88,128);
-    ctx.fillStyle='#d8a35c'; ctx.fillRect(x+140,y+410,160,30);
-    ctx.fillStyle='#fff0'; ctx.shadowBlur=0;
-    // plants around house
-    for(let i=0;i<10;i++){ctx.fillStyle=i%2?'#f279a2':'#ffd05d';ctx.beginPath();ctx.arc(x+20+i*42,y+428+(i%2)*8,7,0,7);ctx.fill();}
-    ctx.restore();
-  }
-  drawBarn(ctx,x,y){
-    ctx.save(); ctx.shadowColor='rgba(0,0,0,.32)';ctx.shadowBlur=20;ctx.shadowOffsetY=14;
-    const g=ctx.createLinearGradient(x,y,x,y+250);g.addColorStop(0,'#b6533e');g.addColorStop(1,'#733020');
-    ctx.fillStyle=g;ctx.strokeStyle='#4d2018';ctx.lineWidth=5;this.round(ctx,x,y,360,250,16);
-    ctx.fillStyle='#6b2c22';ctx.beginPath();ctx.moveTo(x-18,y+12);ctx.lineTo(x+180,y-80);ctx.lineTo(x+378,y+12);ctx.closePath();ctx.fill();ctx.stroke();
-    ctx.fillStyle='#d57b54';ctx.fillRect(x+124,y+88,112,162);ctx.strokeRect(x+124,y+88,112,162);
-    ctx.strokeStyle='#5d281c';ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(x+124,y+88);ctx.lineTo(x+236,y+250);ctx.moveTo(x+236,y+88);ctx.lineTo(x+124,y+250);ctx.stroke();
-    ctx.restore();
-  }
-  drawGreenhouse(ctx,x,y){
-    ctx.save();ctx.shadowColor='rgba(0,0,0,.25)';ctx.shadowBlur=18;ctx.shadowOffsetY=12;
-    const glass=ctx.createLinearGradient(x,y,x,y+230);glass.addColorStop(0,'rgba(190,255,230,.72)');glass.addColorStop(1,'rgba(90,170,140,.42)');
-    ctx.fillStyle=glass;ctx.strokeStyle='#356b5a';ctx.lineWidth=5;this.round(ctx,x,y,330,230,28);
-    ctx.strokeStyle='rgba(255,255,255,.55)';ctx.lineWidth=3;
-    for(let i=1;i<5;i++){ctx.beginPath();ctx.moveTo(x+i*66,y+8);ctx.lineTo(x+i*66,y+222);ctx.stroke()}
-    for(let i=1;i<4;i++){ctx.beginPath();ctx.moveTo(x+8,y+i*56);ctx.lineTo(x+322,y+i*56);ctx.stroke()}
-    ctx.fillStyle='rgba(37,120,65,.45)';
-    for(let i=0;i<8;i++){ctx.beginPath();ctx.ellipse(x+35+i*36,y+175-(i%3)*18,24,44,0,0,7);ctx.fill();}
-    ctx.restore();
-  }
-  drawPond(ctx,x,y){
-    ctx.save();
-    ctx.shadowColor='rgba(70,190,220,.5)';ctx.shadowBlur=24;
-    const water=ctx.createRadialGradient(x+250,y+150,30,x+250,y+160,290);
-    water.addColorStop(0,'#83d8e8');water.addColorStop(.55,'#4fa8c8');water.addColorStop(1,'#2e6f91');
-    ctx.fillStyle=water;ctx.beginPath();ctx.ellipse(x+250,y+160,275,158,0,0,7);ctx.fill();
-    ctx.strokeStyle='#225d73';ctx.lineWidth=6;ctx.stroke();
-    ctx.shadowBlur=0;ctx.strokeStyle='rgba(255,255,255,.42)';ctx.lineWidth=3;
-    const tm=performance.now()/600;
-    for(let i=0;i<8;i++){ctx.beginPath();ctx.ellipse(x+180+i*34+Math.sin(tm+i)*12,y+118+i*13,74,10,0,0,7);ctx.stroke();}
-    // reeds and lily pads
-    for(let i=0;i<18;i++){const rx=x+20+(i*63)%500, ry=y+65+(i*47)%240;ctx.strokeStyle='#356b2d';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(rx,ry+35);ctx.quadraticCurveTo(rx+8,ry+10,rx+2,ry-12);ctx.stroke();}
-    ctx.fillStyle='#3f9c54';for(let i=0;i<7;i++){ctx.beginPath();ctx.ellipse(x+105+i*58,y+130+(i%3)*32,24,12,(i%5)*.4,0,7);ctx.fill();}
-    ctx.restore();
-  }
-  drawFence(ctx,x,y){ctx.fillStyle='#8b5b33';ctx.strokeStyle='#4d2d19';for(let i=0;i<14;i++){ctx.fillRect(x+i*34,y+(i%2)*8,18,180);ctx.strokeRect(x+i*34,y+(i%2)*8,18,180)}ctx.fillRect(x-10,y+60,500,18);ctx.fillRect(x-10,y+130,500,18)}
-  drawTrees(ctx){
-    const sway=Math.sin(performance.now()/900)*3;
-    for(let i=0;i<42;i++){
-      const x=70+(i*311)%2260,y=100+(i*197)%1600;
-      ctx.save();
-      ctx.shadowColor='rgba(0,0,0,.25)';ctx.shadowBlur=18;ctx.shadowOffsetY=12;
-      ctx.fillStyle='#6b3e22';ctx.fillRect(x,y+52,32,78);
-      const leaf=i%2?'#3f8f4a':'#4da65a';
-      const leaf2=i%2?'#57ad62':'#62bd70';
-      ctx.fillStyle=leaf;ctx.beginPath();ctx.ellipse(x+16+sway,y+42,70,58,0,0,7);ctx.fill();
-      ctx.fillStyle=leaf2;ctx.beginPath();ctx.ellipse(x-10+sway*.5,y+32,38,32,0,0,7);ctx.ellipse(x+44+sway*.4,y+28,42,34,0,0,7);ctx.fill();
-      ctx.fillStyle='rgba(255,255,255,.16)';ctx.beginPath();ctx.ellipse(x-8,y+18,25,14,-.5,0,7);ctx.fill();
-      ctx.restore();
-    }
-  }
-  drawFlowers(ctx){for(let i=0;i<170;i++){const x=90+(i*173)%2200,y=180+(i*83)%1500;ctx.fillStyle=['#ff7aa8','#ffe66e','#f66','#b87cff'][i%4];ctx.beginPath();ctx.arc(x,y,4,0,7);ctx.fill()}}
-  drawWell(ctx,x,y){ctx.fillStyle='#8a7667';ctx.beginPath();ctx.arc(x+60,y+60,55,0,7);ctx.fill();ctx.strokeStyle='#493a31';ctx.lineWidth=5;ctx.stroke();ctx.fillStyle='#32251f';ctx.beginPath();ctx.arc(x+60,y+60,32,0,7);ctx.fill()}
-  drawCampfire(ctx,x,y){ctx.fillStyle='#6b3b20';ctx.fillRect(x-45,y+24,90,12);if(game.world.time==='вечер'||game.world.time==='ночь'){ctx.fillStyle='#ffb13b';ctx.beginPath();ctx.arc(x,y,30+Math.sin(performance.now()/120)*4,0,7);ctx.fill();ctx.fillStyle='#ff553b';ctx.beginPath();ctx.arc(x,y+5,18,0,7);ctx.fill()}}
-  drawCatCorner(ctx,x,y){ctx.fillStyle='#ffe0a0';ctx.strokeStyle='#86511f';ctx.lineWidth=4;this.round(ctx,x,y,220,160,22);ctx.font='26px serif';let xx=x+20;for(const id of game.upgrades.bought){const u=game.upgrades.list.find(a=>a.id===id);ctx.fillText(u?.emoji||'🐾',xx,y+95);xx+=28}}
-  drawItems(ctx){for(const it of game.world.items){if(game.inv.hasId(it.id)||game.inv.hasName(it.name))continue;if(it.night&&game.world.time!=='ночь')continue;if(it.locked&&!game.canSeeLockedItem(it))continue;ctx.font='30px serif';ctx.fillText(it.emoji,it.x,it.y)}}
-  drawHumanNPC(ctx,n){
-    if(!n.active(game.world.time))return;
-    ctx.save();ctx.translate(n.x,n.y);
-    ctx.fillStyle='rgba(0,0,0,.28)';ctx.beginPath();ctx.ellipse(0,42,34,12,0,0,7);ctx.fill();
-    // legs
-    ctx.fillStyle='#2e2e38';ctx.fillRect(-15,18,12,34);ctx.fillRect(5,18,12,34);
-    // body silhouette
-    const body=ctx.createLinearGradient(0,-24,0,42);body.addColorStop(0,n.color);body.addColorStop(1,'#2b2430');
-    ctx.fillStyle=body;ctx.strokeStyle='rgba(30,20,20,.55)';ctx.lineWidth=3;
-    ctx.beginPath();ctx.roundRect(-24,-22,48,62,14);ctx.fill();ctx.stroke();
-    // arms
-    ctx.strokeStyle=n.tattoo?'#e1a37c':'#f0ba8e';ctx.lineWidth=9;ctx.lineCap='round';
-    ctx.beginPath();ctx.moveTo(-23,-8);ctx.lineTo(-36,23);ctx.moveTo(23,-8);ctx.lineTo(36,23);ctx.stroke();
-    if(n.tattoo){ctx.strokeStyle='#20304a';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-37,10);ctx.lineTo(-31,20);ctx.moveTo(31,10);ctx.lineTo(37,20);ctx.stroke();}
-    // head and hair
-    ctx.fillStyle=n.skin||'#f0ba8e';ctx.beginPath();ctx.arc(0,-42,24,0,7);ctx.fill();ctx.strokeStyle='rgba(90,50,35,.5)';ctx.stroke();
-    ctx.fillStyle=n.hair;ctx.beginPath();ctx.arc(0,-55,26,Math.PI,0);ctx.quadraticCurveTo(28,-36,15,-28);ctx.quadraticCurveTo(0,-35,-18,-28);ctx.quadraticCurveTo(-30,-36,-26,-55);ctx.fill();
-    if(n.name==='Лёха'){ctx.fillRect(-23,-43,8,28);ctx.fillRect(15,-43,8,28)}
-    if(n.name==='Лиза'){ctx.fillStyle='#ff8bd6';ctx.beginPath();ctx.arc(-20,-38,10,0,7);ctx.arc(22,-40,9,0,7);ctx.fill();}
-    if(n.hat){ctx.fillStyle='#2b1b35';ctx.beginPath();ctx.moveTo(-34,-62);ctx.lineTo(0,-106);ctx.lineTo(34,-62);ctx.closePath();ctx.fill();ctx.fillStyle='#1d1228';ctx.beginPath();ctx.ellipse(0,-61,40,9,0,0,7);ctx.fill();}
-    if(n.glasses){ctx.strokeStyle=n.name==='Даня'?'#e33':'#111';ctx.lineWidth=3;ctx.strokeRect(-19,-47,15,11);ctx.strokeRect(4,-47,15,11);ctx.beginPath();ctx.moveTo(-4,-42);ctx.lineTo(4,-42);ctx.stroke();}
-    ctx.fillStyle='#111';ctx.fillRect(-8,-42,4,4);ctx.fillRect(8,-42,4,4);
-    ctx.strokeStyle='#793838';ctx.lineWidth=2;ctx.beginPath();ctx.arc(0,-32,7,0,Math.PI);ctx.stroke();
-    ctx.fillStyle='#fff';ctx.font='bold 14px system-ui';ctx.textAlign='center';ctx.lineWidth=4;ctx.strokeStyle='rgba(0,0,0,.45)';ctx.strokeText(n.name,0,70);ctx.fillText(n.name,0,70);
-    ctx.restore();
-  }
-  drawCat(ctx,p){
-    ctx.save();ctx.translate(p.x,p.y);ctx.scale(p.dir,1);
-    const w=Math.sin(p.walk), blink=Math.sin(performance.now()/1300)>0.96;
-    ctx.fillStyle='rgba(0,0,0,.32)';ctx.beginPath();ctx.ellipse(0,25,38,13,0,0,7);ctx.fill();
-    // tail
-    ctx.strokeStyle='#c65f1f';ctx.lineWidth=12;ctx.lineCap='round';
-    ctx.beginPath();ctx.moveTo(-30,-2);ctx.quadraticCurveTo(-70,-42,-35,-58+w*5);ctx.stroke();
-    ctx.strokeStyle='#7a3b16';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(-30,-2);ctx.quadraticCurveTo(-70,-42,-35,-58+w*5);ctx.stroke();
-    // body
-    const fur=ctx.createLinearGradient(-30,-22,35,25);fur.addColorStop(0,'#f7a24a');fur.addColorStop(1,'#d86b22');
-    ctx.fillStyle=fur;ctx.strokeStyle='#7a3b16';ctx.lineWidth=3;
-    ctx.beginPath();ctx.ellipse(0,0,38,25,0,0,7);ctx.fill();ctx.stroke();
-    // paws
-    ctx.fillStyle='#ffb15a';for(let i=0;i<4;i++){ctx.beginPath();ctx.ellipse(-18+i*12,18+(i%2)*w*2,8,6,0,0,7);ctx.fill();}
-    // head
-    ctx.fillStyle='#f1842d';ctx.beginPath();ctx.arc(30,-20,25,0,7);ctx.fill();ctx.stroke();
-    // ears
-    ctx.beginPath();ctx.moveTo(12,-38);ctx.lineTo(18,-64);ctx.lineTo(31,-39);ctx.moveTo(38,-39);ctx.lineTo(52,-64);ctx.lineTo(54,-32);ctx.fill();ctx.stroke();
-    ctx.fillStyle='#ffbd83';ctx.beginPath();ctx.moveTo(18,-43);ctx.lineTo(20,-55);ctx.lineTo(26,-42);ctx.moveTo(43,-43);ctx.lineTo(50,-55);ctx.lineTo(50,-39);ctx.fill();
-    // stripes
-    ctx.strokeStyle='#9b4618';ctx.lineWidth=3;for(let i=0;i<4;i++){ctx.beginPath();ctx.moveTo(-18+i*11,-14);ctx.lineTo(-8+i*10,-3);ctx.stroke();}
-    ctx.beginPath();ctx.moveTo(26,-42);ctx.lineTo(30,-30);ctx.moveTo(38,-42);ctx.lineTo(35,-30);ctx.stroke();
-    // eyes and face
-    ctx.fillStyle='#6cff93';
-    if(blink){ctx.strokeStyle='#2b1b10';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(21,-23);ctx.lineTo(27,-23);ctx.moveTo(39,-23);ctx.lineTo(45,-23);ctx.stroke();}
-    else {ctx.beginPath();ctx.ellipse(24,-23,5,6,0,0,7);ctx.ellipse(42,-23,5,6,0,0,7);ctx.fill();ctx.fillStyle='#111';ctx.beginPath();ctx.arc(24,-23,2,0,7);ctx.arc(42,-23,2,0,7);ctx.fill();}
-    ctx.fillStyle='#5b2b1b';ctx.beginPath();ctx.arc(33,-15,3,0,7);ctx.fill();
-    ctx.strokeStyle='#5b2b1b';ctx.lineWidth=1.5;for(let side of [-1,1])for(let i=0;i<3;i++){ctx.beginPath();ctx.moveTo(33,-13+i*3);ctx.lineTo(33+side*(22+i*3),-17+i*4);ctx.stroke();}
-    if(p.meowTimer>0){ctx.scale(p.dir,1);ctx.fillStyle='rgba(255,255,255,.88)';ctx.strokeStyle='rgba(0,0,0,.25)';ctx.lineWidth=3;ctx.font='bold 22px system-ui';ctx.strokeText('Мяу!',45,-58);ctx.fillText('Мяу!',45,-58)}
-    ctx.restore();
-  }
-  drawFloatingParticles(ctx){
-    const t=performance.now()/1000;
-    if(game.world.time==='ночь')return;
-    ctx.save();ctx.fillStyle='rgba(255,235,170,.35)';
-    for(let i=0;i<80;i++){const x=(i*127+t*12)%game.world.w,y=(i*311+Math.sin(t+i)*30)%game.world.h;ctx.beginPath();ctx.arc(x,y,1.5+(i%3),0,7);ctx.fill();}
-    ctx.restore();
-  }
-  drawFireflies(ctx){if(game.world.time!=='вечер'&&game.world.time!=='ночь')return;for(const f of game.world.fireflies){ctx.fillStyle=`rgba(255,230,120,${.35+.45*Math.sin(f.a)})`;ctx.beginPath();ctx.arc(f.x,f.y,3+Math.sin(f.a)*2,0,7);ctx.fill()}}
-  drawLightingOverlay(ctx){
-    const t=game.world.time;
-    if(t==='вечер'){
-      const g=ctx.createRadialGradient(innerWidth*.2,innerHeight*.1,20,innerWidth*.2,innerHeight*.1,innerWidth);
-      g.addColorStop(0,'rgba(255,210,110,.24)');g.addColorStop(1,'rgba(255,100,45,.10)');
-      ctx.fillStyle=g;ctx.fillRect(0,0,innerWidth,innerHeight);
-    }
-    if(t==='ночь'){
-      this.overlay(ctx,'rgba(14,24,70,.34)');
-      ctx.fillStyle='rgba(255,255,255,.65)';
-      for(let i=0;i<70;i++){const x=(i*97)%innerWidth,y=(i*151)%Math.max(1,innerHeight*.55);ctx.fillRect(x,y,1.5,1.5);}
-    }
-    if(game.world.weather==='туман'){this.overlay(ctx,'rgba(230,240,230,.18)')}
-    if(game.world.weather==='дождь'){
-      ctx.strokeStyle='rgba(190,220,255,.45)';
-      for(let i=0;i<130;i++){let x=(i*47+performance.now()/8)%innerWidth,y=(i*91+performance.now()/5)%innerHeight;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x-9,y+22);ctx.stroke()}
-      ctx.fillStyle='rgba(100,120,160,.10)';ctx.fillRect(0,0,innerWidth,innerHeight);
-    }
-    // soft vignette
-    const v=ctx.createRadialGradient(innerWidth/2,innerHeight/2,innerWidth*.2,innerWidth/2,innerHeight/2,innerWidth*.75);
-    v.addColorStop(0,'rgba(0,0,0,0)');v.addColorStop(1,'rgba(0,0,0,.28)');
-    ctx.fillStyle=v;ctx.fillRect(0,0,innerWidth,innerHeight);
-  }
-  overlay(ctx,c){ctx.fillStyle=c;ctx.fillRect(0,0,innerWidth,innerHeight)}
-  drawMiniMap(ctx){ctx.save();ctx.globalAlpha=.85;ctx.fillStyle='#1b160fcc';ctx.fillRect(innerWidth-118,82,100,76);ctx.fillStyle='#80bd63';ctx.fillRect(innerWidth-112,88,88,64);ctx.fillStyle='#f1842d';ctx.beginPath();ctx.arc(innerWidth-112+game.player.x/game.world.w*88,88+game.player.y/game.world.h*64,4,0,7);ctx.fill();ctx.restore()}
-}
-
-class Game{
+class Game3D{
   constructor(){
-    window.game=this;this.tg=new TelegramBridge();this.tg.init();this.canvas=$('game');this.renderer=new Renderer(this.canvas);
-    this.input=new Input();this.mobile=new MobileControls();this.audio=new AudioSystem();this.world=new World();this.player=new Player();
-    this.quest=new QuestSystem();this.inv=new Inventory();this.upgrades=new UpgradeSystem();this.mini=new MiniGameSystem();this.ach=new AchievementSystem();this.save=new SaveSystem();this.ui=new UIManager();
-    this.npcs=this.makeNPCs();this.paused=true;this.last=performance.now();requestAnimationFrame(t=>this.loop(t));
+    window.game=this;
+    this.tg=new TelegramBridge();this.tg.init();
+    this.music=new Music();this.input=new Input();this.mobile=new MobileControls();this.ui=new UI();
+    this.stats={satiety:100,energy:100,mood:100,fame:0};
+    this.inventory=[];this.paused=true;this.clock=0;this.time='morning';this.weather='солнце';this.stepTimer=0;
+    this.quests=[
+      {id:'q1',title:'Миска Рыжика',hint:'Найди миску и поставь её в кошачьем уголке',item:'bowl',done:false},
+      {id:'q2',title:'Старая кассета',hint:'Найди кассету в сарае и отдай Лёхе',item:'cassette',npc:'Лёха',done:false},
+      {id:'q3',title:'Пропавший медиатор',hint:'Найди медиатор у пруда и отдай Игорю',item:'pick',npc:'Игорь',done:false},
+      {id:'q4',title:'Фото со светлячками',hint:'Поговори с Настей вечером у поляны',npc:'Настя',done:false},
+      {id:'q5',title:'Потерянные наклейки',hint:'Отдай Лизе наклейки',item:'stickers',npc:'Лиза',done:false},
+      {id:'q6',title:'Колокольчик луны',hint:'Отдай Магу лунный колокольчик ночью',item:'moonbell',npc:'Маг',done:false},
+      {id:'q7',title:'Лесная тропа',hint:'Отдай Соне редкий лист',item:'leaf',npc:'Соня',done:false},
+      {id:'q8',title:'Странные записи',hint:'Отдай Нэне страницы дневника',item:'pages',npc:'Нэна',done:false},
+      {id:'q9',title:'Сломанный фонарик',hint:'Отдай Кристине детали фонаря',item:'parts',npc:'Кристина',done:false},
+      {id:'q10',title:'Коробка сокровищ',hint:'Отдай Дане пуговицу',item:'button',npc:'Даня',done:false},
+      {id:'q11',title:'Старый забор',hint:'Поговори с Прохором у забора',npc:'Прохор',done:false},
+      {id:'q20',title:'Солнечный колокольчик',hint:'Открой теплицу и найди Солнечный колокольчик',item:'sunbell',done:false},
+    ];
+    this.items=[
+      {id:'bowl',name:'миска',emoji:'🥣',use:'Поставить в кошачьем уголке',x:-4,z:2,target:'zone:corner'},
+      {id:'cassette',name:'старая кассета',emoji:'📼',use:'Отдать Лёхе',x:-12,z:9,target:'npc:Лёха'},
+      {id:'pick',name:'медиатор',emoji:'🎸',use:'Отдать Игорю',x:13,z:13,target:'npc:Игорь'},
+      {id:'stickers',name:'наклейки',emoji:'⭐',use:'Отдать Лизе',x:2,z:6,target:'npc:Лиза'},
+      {id:'moonbell',name:'лунный колокольчик',emoji:'🔔',use:'Отдать Магу ночью',x:-7,z:11,target:'npc:Маг'},
+      {id:'leaf',name:'редкий лист',emoji:'🍃',use:'Отдать Соне',x:16,z:-6,target:'npc:Соня'},
+      {id:'pages',name:'страницы дневника',emoji:'📜',use:'Отдать Нэне',x:4,z:-5,target:'npc:Нэна'},
+      {id:'parts',name:'детали фонаря',emoji:'🔩',use:'Отдать Кристине',x:-13,z:8,target:'npc:Кристина'},
+      {id:'button',name:'пуговица',emoji:'🔘',use:'Отдать Дане',x:-6,z:6,target:'npc:Даня'},
+      {id:'sunbell',name:'солнечный колокольчик',emoji:'🌞',use:'Завершить тайну',x:-15,z:-11,target:'zone:greenhouse'},
+    ];
+    this.init3D();
+    this.createWorld();
+    this.npcs=this.createNPCs();
+    this.createCat();
+    this.last=performance.now();
+    requestAnimationFrame(t=>this.loop(t));
   }
-  makeNPCs(){return[
-    new NPC({name:'Лёха',x:970,y:620,color:'#e9dcc5',hair:'#f2d77b',times:['утро','день','вечер'],quest:'q2',item:'старая кассета',line:'У этого дома память как старая плёнка. Найдёшь кассету — расскажу больше.'}),
-    new NPC({name:'Игорь',x:1600,y:1190,color:'#222',hair:'#151515',times:['день','вечер','ночь'],quest:'q3',item:'медиатор',line:'Без медиатора рок-мяу не звучит. У пруда я его точно ронял.'}),
-    new NPC({name:'Настя',x:1440,y:620,color:'#b44452',hair:'#6b3a22',times:['день','вечер','ночь'],quest:'q4',line:'Светлячки лучше всего видны ночью на поляне. Хочу фото с Рыжиком.'}),
-    new NPC({name:'Лиза',x:1160,y:840,color:'#ff7cc6',hair:'#ff8bd6',times:['утро','день','вечер'],quest:'q5',item:'наклейки',line:'Надо сделать уголок Рыжика самым милым местом во дворе!'}),
-    new NPC({name:'Маг',x:790,y:1150,color:'#4a295f',hair:'#111',hat:true,times:['вечер','ночь'],quest:'q6',item:'лунный колокольчик',line:'Колодец слышит то, что днём прячется.'}),
-    new NPC({name:'Соня',x:1940,y:650,color:'#6aa36f',hair:'#ead58a',times:['утро','день'],quest:'q7',item:'редкий лист',line:'Тропа откроется, если найти лист с дальней стороны леса.'}),
-    new NPC({name:'Нэна',x:1320,y:650,color:'#6b6fb2',hair:'#241a1a',glasses:true,times:['утро','день','вечер'],quest:'q8',item:'страницы дневника',line:'В записях есть схема старой теплицы.'}),
-    new NPC({name:'Кристина',x:560,y:1120,color:'#2b2f3a',hair:'#72402a',tattoo:true,times:['день','вечер'],quest:'q9',item:'детали фонаря',line:'Фонарь починим — ночью станет не страшно, а красиво.'}),
-    new NPC({name:'Даня',x:650,y:920,color:'#5863cc',hair:'#3b2720',glasses:true,times:['утро','день','вечер'],quest:'q10',item:'пуговица',line:'Пуговица? Из неё можно сделать игрушку, отвечаю.'}),
-    new NPC({name:'Прохор',x:1750,y:1030,color:'#8b4534',hair:'#2b1b10',tattoo:true,times:['утро','день','вечер'],quest:'q11',line:'Забор сам себя не починит. Но кот с характером — уже полдела.'})
-  ]}
-  start(load=false,fresh=false){if(load)this.save.load();this.paused=false;this.ui.hideMenu();this.mobile.show();$('topHud').classList.remove('hidden');$('questHud').classList.remove('hidden');this.audio.startMusic();this.toast(fresh?'Новая игра началась':'Добро пожаловать обратно')}
-  loop(t){const dt=Math.min(.05,(t-this.last)/1000);this.last=t;if(!this.paused)this.update(dt);this.renderer.render();this.ui.update();requestAnimationFrame(tt=>this.loop(tt))}
+  init3D(){
+    this.scene=new THREE.Scene();
+    this.scene.fog=new THREE.Fog(0x96c4ff,18,70);
+    this.camera=new THREE.PerspectiveCamera(50,innerWidth/innerHeight,.1,200);
+    this.camera.position.set(0,18,20);this.camera.lookAt(0,0,0);
+    this.renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
+    this.renderer.setSize(innerWidth,innerHeight);this.renderer.setPixelRatio(Math.min(devicePixelRatio,1.8));
+    this.renderer.shadowMap.enabled=true;this.renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+    this.renderer.outputColorSpace=THREE.SRGBColorSpace;
+    $('gameRoot').appendChild(this.renderer.domElement);
+    addEventListener('resize',()=>{this.camera.aspect=innerWidth/innerHeight;this.camera.updateProjectionMatrix();this.renderer.setSize(innerWidth,innerHeight)});
+    this.sun=new THREE.DirectionalLight(0xffe4b0,2.6);this.sun.position.set(-12,24,10);this.sun.castShadow=true;this.sun.shadow.mapSize.set(2048,2048);this.scene.add(this.sun);
+    this.amb=new THREE.HemisphereLight(0xbde7ff,0x6b4b32,1.6);this.scene.add(this.amb);
+  }
+  mat(c,rough=.85){return new THREE.MeshStandardMaterial({color:c,roughness:rough,metalness:0})}
+  mesh(g,m,x=0,y=0,z=0){const o=new THREE.Mesh(g,m);o.position.set(x,y,z);o.castShadow=o.receiveShadow=true;this.scene.add(o);return o}
+  createWorld(){
+    this.ground=this.mesh(new THREE.PlaneGeometry(80,80,80,80),this.mat(0x6fb85a),0,0,0);this.ground.rotation.x=-Math.PI/2;this.ground.receiveShadow=true;
+    // paths
+    const pathMat=this.mat(0xb98552);
+    [[0,0,7,20,.2],[-8,6,4,13,.25],[11,9,4,14,-.45],[14,-2,3,16,.25],[-14,-8,4,10,.2]].forEach(p=>{
+      const m=this.mesh(new THREE.BoxGeometry(p[2],.035,p[3]),pathMat,p[0],.02,p[1]);m.rotation.y=p[4];
+    });
+    this.house=this.groupHouse(-1,-10);
+    this.barn=this.groupBarn(-14,8);
+    this.greenhouse=this.groupGreenhouse(-15,-12);
+    this.pond=this.groupPond(13,12);
+    this.catCorner=this.groupCatCorner(3,3);
+    this.groupFence(16,4);
+    this.groupWell(-7,9);
+    this.groupCampfire(15,-8);
+    this.createTrees();
+    this.createFlowers();
+    this.createItems();
+    this.createFireflies();
+  }
+  groupHouse(x,z){
+    const g=new THREE.Group();g.position.set(x,0,z);this.scene.add(g);
+    const wall=this.mat(0xb96a3a), roof=this.mat(0x7d3228), wood=this.mat(0x5b331f), glow=this.mat(0xffd56b);
+    const base=new THREE.Mesh(new THREE.BoxGeometry(7,4,5),wall);base.position.y=2;base.castShadow=base.receiveShadow=true;g.add(base);
+    const r=new THREE.Mesh(new THREE.ConeGeometry(5.4,2.7,4),roof);r.rotation.y=Math.PI/4;r.position.y=5.35;r.castShadow=true;g.add(r);
+    const door=new THREE.Mesh(new THREE.BoxGeometry(1.3,2.4,.12),wood);door.position.set(0,1.2,2.57);g.add(door);
+    for(let i=-1;i<=1;i+=2){const w=new THREE.Mesh(new THREE.BoxGeometry(1.1,1.1,.14),glow);w.position.set(i*2.1,2.5,2.58);g.add(w)}
+    const porch=new THREE.Mesh(new THREE.BoxGeometry(5,.25,1.8),this.mat(0xd49a5a));porch.position.set(0,.15,3.2);g.add(porch);
+    return g;
+  }
+  groupBarn(x,z){
+    const g=new THREE.Group();g.position.set(x,0,z);this.scene.add(g);
+    const base=new THREE.Mesh(new THREE.BoxGeometry(5,3.5,5),this.mat(0x9b3d2c));base.position.y=1.75;base.castShadow=base.receiveShadow=true;g.add(base);
+    const roof=new THREE.Mesh(new THREE.ConeGeometry(4.2,2,4),this.mat(0x68271f));roof.rotation.y=Math.PI/4;roof.position.y=4.4;roof.castShadow=true;g.add(roof);
+    return g;
+  }
+  groupGreenhouse(x,z){
+    const g=new THREE.Group();g.position.set(x,0,z);this.scene.add(g);
+    const glass=new THREE.MeshStandardMaterial({color:0x9ee8c6,transparent:true,opacity:.48,roughness:.2});
+    const base=new THREE.Mesh(new THREE.BoxGeometry(5,2.8,4),glass);base.position.y=1.4;base.castShadow=base.receiveShadow=true;g.add(base);
+    const roof=new THREE.Mesh(new THREE.ConeGeometry(3.7,1.7,4),glass);roof.rotation.y=Math.PI/4;roof.position.y=3.65;g.add(roof);
+    return g;
+  }
+  groupPond(x,z){
+    const g=new THREE.Group();g.position.set(x,.03,z);this.scene.add(g);
+    const water=new THREE.Mesh(new THREE.CircleGeometry(4.3,64),new THREE.MeshStandardMaterial({color:0x3fa6c8,roughness:.2,metalness:.05,transparent:true,opacity:.86}));
+    water.rotation.x=-Math.PI/2;water.scale.z=.6;water.receiveShadow=true;g.add(water);
+    return g;
+  }
+  groupCatCorner(x,z){
+    const g=new THREE.Group();g.position.set(x,0,z);this.scene.add(g);
+    const mat=this.mat(0xffc46b);
+    const pad=new THREE.Mesh(new THREE.CylinderGeometry(1.2,1.4,.25,32),mat);pad.position.y=.14;pad.castShadow=pad.receiveShadow=true;g.add(pad);
+    const bowl=new THREE.Mesh(new THREE.TorusGeometry(.45,.12,12,24),this.mat(0xffe6a0));bowl.position.set(1.2,.3,.2);bowl.rotation.x=Math.PI/2;g.add(bowl);
+    return g;
+  }
+  groupFence(x,z){const wood=this.mat(0x8b5a32);for(let i=0;i<9;i++){const p=this.mesh(new THREE.BoxGeometry(.25,2.2,.25),wood,x+i*.8,1.1,z);const a=this.mesh(new THREE.BoxGeometry(.75,.18,.18),wood,x+i*.8,1.2,z);}}
+  groupWell(x,z){const mat=this.mat(0x7f776e);const w=this.mesh(new THREE.CylinderGeometry(1,1,.8,24),mat,x,.4,z);const hole=this.mesh(new THREE.CylinderGeometry(.65,.65,.82,24),this.mat(0x1b1715),x,.43,z)}
+  groupCampfire(x,z){const logs=this.mat(0x6b3b20);const a=this.mesh(new THREE.BoxGeometry(2,.18,.25),logs,x,.15,z);a.rotation.y=.5;const b=this.mesh(new THREE.BoxGeometry(2,.18,.25),logs,x,.18,z);b.rotation.y=-.5;this.fire=this.mesh(new THREE.ConeGeometry(.7,1.5,8),this.mat(0xff7a2b),x,.85,z)}
+  createTrees(){
+    for(let i=0;i<42;i++){
+      const x=-35+Math.random()*70,z=-35+Math.random()*70;
+      if(Math.hypot(x,z)<8)continue;
+      const trunk=this.mesh(new THREE.CylinderGeometry(.25,.34,2.2,8),this.mat(0x6a3d21),x,1.1,z);
+      const crown=this.mesh(new THREE.SphereGeometry(1.6+Math.random()*.8,12,10),this.mat(Math.random()>.5?0x3e9147:0x4fa85d),x,3,z);
+      crown.scale.y=.9;crown.userData.sway=Math.random()*10;
+    }
+  }
+  createFlowers(){
+    for(let i=0;i<160;i++){
+      const x=-32+Math.random()*64,z=-30+Math.random()*62;
+      const c=[0xff6699,0xffdd55,0x9c6bff,0xff6d4d][i%4];
+      const f=this.mesh(new THREE.SphereGeometry(.12,8,6),this.mat(c),x,.14,z);
+      f.scale.y=.45;
+    }
+  }
+  createItems(){
+    this.itemObjects=[];
+    const mats={bowl:0xffe0a0,cassette:0x333333,pick:0xfff1a6,stickers:0xff79c6,moonbell:0xd7d7ff,leaf:0x55bb55,pages:0xfff0c0,parts:0xaaaaaa,button:0xe33b3b,sunbell:0xffd34d};
+    for(const it of this.items){
+      const group=new THREE.Group();group.position.set(it.x,.55,it.z);group.userData.item=it;this.scene.add(group);
+      const mesh=new THREE.Mesh(new THREE.IcosahedronGeometry(.45,1),this.mat(mats[it.id]||0xffffff));mesh.castShadow=true;group.add(mesh);
+      const halo=new THREE.Mesh(new THREE.TorusGeometry(.62,.04,8,32),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.5}));halo.rotation.x=Math.PI/2;group.add(halo);
+      this.itemObjects.push(group);
+    }
+  }
+  createFireflies(){
+    this.fireflies=[];
+    const mat=new THREE.MeshBasicMaterial({color:0xffe36e});
+    for(let i=0;i<45;i++){const s=new THREE.Mesh(new THREE.SphereGeometry(.07,8,6),mat);s.position.set(12+Math.random()*9,1.2+Math.random()*2,-11+Math.random()*7);this.scene.add(s);this.fireflies.push(s)}
+  }
+  createNPCs(){
+    const data=[
+      ['Лёха',-1,-4,0xe9dcc5,0xf2d77b,false,false,false,'Кассета где-то в сарае. Я помню звук старого лета.'],
+      ['Игорь',12,9,0x222222,0x151515,false,false,false,'Медиатор у пруда, а без него рок-мяу не выйдет.'],
+      ['Настя',7,-2,0xb44452,0x6b3a22,false,false,false,'Вечером светлячки выглядят как маленькие звёзды.'],
+      ['Лиза',3,5,0xff7cc6,0xff8bd6,false,false,true,'Наклейки спасут кошачий уголок от скуки!'],
+      ['Маг',-7,8,0x4a295f,0x111111,true,false,false,'Лунный колокольчик слышен только ночью.'],
+      ['Соня',16,-3,0x6aa36f,0xead58a,false,false,false,'Редкий лист покажет безопасную тропу.'],
+      ['Нэна',5,-5,0x6b6fb2,0x241a1a,false,true,false,'Страницы дневника ведут к теплице.'],
+      ['Кристина',-12,7,0x2b2f3a,0x72402a,false,false,true,'Детали фонаря — и ночь станет красивой.'],
+      ['Даня',-5,5,0x5863cc,0x3b2720,false,true,false,'Пуговица? Из неё можно сделать шедевр.'],
+      ['Прохор',15,3,0x8b4534,0x2b1b10,false,false,true,'Забор починить? Рыжик, ты в деле.'],
+    ];
+    return data.map(d=>this.makeHuman(...d));
+  }
+  makeHuman(name,x,z,color,hair,hat,glasses,tattoo,line){
+    const g=new THREE.Group();g.position.set(x,0,z);this.scene.add(g);
+    const body=new THREE.Mesh(new THREE.CapsuleGeometry(.55,1.25,6,12),this.mat(color));body.position.y=1.45;body.castShadow=true;g.add(body);
+    const head=new THREE.Mesh(new THREE.SphereGeometry(.42,16,12),this.mat(0xf0ba8e));head.position.y=2.55;head.castShadow=true;g.add(head);
+    const hairM=new THREE.Mesh(new THREE.SphereGeometry(.46,16,8,0,Math.PI*2,0,Math.PI/2),this.mat(hair));hairM.position.y=2.75;hairM.castShadow=true;g.add(hairM);
+    if(hat){const h=new THREE.Mesh(new THREE.ConeGeometry(.55,.9,16),this.mat(0x23142d));h.position.y=3.3;g.add(h);const brim=new THREE.Mesh(new THREE.CylinderGeometry(.78,.78,.08,24),this.mat(0x160d20));brim.position.y=2.95;g.add(brim)}
+    if(glasses){const gl=new THREE.Mesh(new THREE.TorusGeometry(.18,.025,8,18),this.mat(name==='Даня'?0xff2222:0x111111));gl.position.set(-.16,2.57,.36);g.add(gl);const gr=gl.clone();gr.position.x=.16;g.add(gr)}
+    if(tattoo){const arm1=new THREE.Mesh(new THREE.CylinderGeometry(.09,.09,.75,8),this.mat(0xf0ba8e));arm1.position.set(-.55,1.35,.05);arm1.rotation.z=.25;g.add(arm1);const arm2=arm1.clone();arm2.position.x=.55;arm2.rotation.z=-.25;g.add(arm2)}
+    g.userData={name,color,hair,hat,glasses,tattoo,line,friend:0};
+    return g;
+  }
+  createCat(){
+    const g=new THREE.Group();g.position.set(0,.05,2);this.scene.add(g);this.cat=g;
+    const orange=this.mat(0xf1842d);
+    const body=new THREE.Mesh(new THREE.CapsuleGeometry(.45,.95,8,16),orange);body.rotation.z=Math.PI/2;body.position.y=.55;body.castShadow=true;g.add(body);
+    const head=new THREE.Mesh(new THREE.SphereGeometry(.42,18,14),orange);head.position.set(.55,.82,0);head.castShadow=true;g.add(head);
+    for(const sx of [.42,.72]){const ear=new THREE.Mesh(new THREE.ConeGeometry(.16,.34,3),orange);ear.position.set(sx,1.22,.18*(sx>.5?1:-1));ear.rotation.x=Math.PI;g.add(ear)}
+    const tail=new THREE.Mesh(new THREE.TorusGeometry(.38,.07,8,24,Math.PI*1.2),orange);tail.position.set(-.65,.8,0);tail.rotation.set(Math.PI/2,0,Math.PI/2);g.add(tail);
+    for(let i=0;i<4;i++){const paw=new THREE.Mesh(new THREE.SphereGeometry(.13,8,6),orange);paw.position.set(-.25+i*.22,.18,i<2?.28:-.28);g.add(paw)}
+    const eyeMat=this.mat(0x65ff80);for(const z of [-.15,.15]){const e=new THREE.Mesh(new THREE.SphereGeometry(.045,8,6),eyeMat);e.position.set(.92,.9,z);g.add(e)}
+  }
+  timeRu(){return {morning:'Утро',day:'День',evening:'Вечер',night:'Ночь'}[this.time]}
+  start(fresh=false){if(fresh)this.reset();else this.load();this.paused=false;this.ui.hideMenu();this.music.start();this.ui.toast('Рыжик вышел во двор')}
+  reset(){localStorage.removeItem('ryzhik3d-save');this.inventory=[];this.quests.forEach(q=>q.done=false);this.cat.position.set(0,.05,2)}
+  loop(t){const dt=Math.min(.05,(t-(this.last||t))/1000);this.last=t;if(!this.paused)this.update(dt);this.render();this.ui.update();requestAnimationFrame(x=>this.loop(x))}
   update(dt){
-    let v=this.input.vector();if(Math.hypot(this.mobile.vec.x,this.mobile.vec.y)>.05)v=this.mobile.vec;
-    this.player.update(dt,v);this.world.update(dt);this.audio.update(dt);this.updateActionHint();this.ach.check();
-    if(this.input.meow){this.meow();this.input.meow=false}
-    if(this.input.keys.e){this.tryInteract();this.input.keys.e=false}
-    if(this.input.keys.i){this.ui.showInventory();this.input.keys.i=false}
-    if(this.input.keys.m){this.ui.showMap();this.input.keys.m=false}
-    if(this.input.keys.q){this.ui.showQuests();this.input.keys.q=false}
-    if(this.input.keys.escape){this.ui.showMenu(true);this.input.keys.escape=false}
-  }
-  canSeeLockedItem(it){if(it.id==='greenhouseKey')return this.npcs.every(n=>n.friend>=1);if(it.id==='sunbell')return this.inv.hasId('greenhouseKey')||this.inv.hasName('ключ от теплицы');return true}
-  unlockByQuest(id){
-    if(id==='q7'){this.world.unlockedZones.push('Лесная тропа','Поляна');this.toast('Открыта поляна')}
-    if(id==='q11'){this.world.unlockedZones.push('Старый забор','Крыша','Тайная тропа')}
-    if(id==='q9'){this.world.unlockedZones.push('Подвал','Колодец')}
-    if(id==='q8'){this.world.unlockedZones.push('Чердак')}
-    if(id==='q19'){this.world.unlockedZones.push('Теплица')}
-  }
-  nearestNPC(){return this.npcs.filter(n=>n.active(this.world.time)).map(n=>({n,d:d2(this.player,n)})).sort((a,b)=>a.d-b.d)[0]}
-  nearestItem(){return this.world.items.filter(it=>!this.inv.hasId(it.id)&&!this.inv.hasName(it.name)&&(!it.night||this.world.time==='ночь')&&(!it.locked||this.canSeeLockedItem(it))).map(it=>({it,d:d2(this.player,it)})).sort((a,b)=>a.d-b.d)[0]}
-  tryInteract(){
-    const zone=this.world.zoneAt(this.player);
-    if(zone==='Пруд' && d2(this.player,{x:1600,y:1330})<160){this.mini.fishing();return}
-    if(zone==='Поляна' && (this.world.time==='ночь'||this.world.time==='вечер')){this.mini.fireflies();return}
-    const ni=this.nearestItem(); if(ni&&ni.d<72){this.inv.add(ni.it); if(ni.it.id==='bowl')this.quest.complete('q1'); if(ni.it.id==='greenhouseKey')this.quest.complete('q19'); if(ni.it.id==='sunbell')this.quest.complete('q20'); this.tg.vibrate(); return}
-    const nn=this.nearestNPC(); if(nn&&nn.d<96){this.talk(nn.n);this.tg.vibrate();return}
-    const zi=this.inv.items?.find?.(i=>i.target===`zone:${zone}`); if(zi){this.inv.useItem(zi.id);return}
-    if(zone==='Кошачий уголок'){this.ui.showUpgrades();return}
-    this.toast('Рядом ничего нет')
-  }
-  talk(n, fromInventory=false, itemId=null){
-    if(n.name==='Игорь'&&this.world.time==='вечер'&&this.quest.done('q3')){this.mini.concert();return}
-    if(n.name==='Настя'&&(this.world.time==='вечер'||this.world.time==='ночь')&&this.world.zoneAt(this.player)==='Поляна'){this.mini.fireflies();return}
-    const q=this.quest.quests.find(q=>q.id===n.quest);
-    if(q&&!q.done){
-      if(q.item && (this.inv.hasId(q.item)||this.inv.hasName(q.item)||this.inv.hasName(n.item))){
-      if(itemId && itemId!==q.item){
-        this.ui.dialogue(n,`Это мило, но мне сейчас нужен другой предмет: ${n.item||q.item}.`);
-        return;
-      }
-      this.quest.complete(q.id);
-      this.inv.removeById(q.item);
-      n.friend=clamp(n.friend+1,0,3);
-      this.ach.unlock('Друг '+n.name);
-      this.ui.dialogue(n,`Спасибо, Рыжик! Ты отдал нужный предмет. Теперь я тебе доверяю. ${n.line}`);
-      return
+    this.clock+=dt;if(this.clock>45){this.clock=0;const arr=['morning','day','evening','night'];this.time=arr[(arr.indexOf(this.time)+1)%4];if(this.time==='morning')this.weather=['солнце','облачно','дождь','туман'][Math.floor(Math.random()*4)]}
+    let v=this.mobile.vec;if(Math.hypot(v.x,v.z)<.05)v=this.input.vector();
+    const len=Math.hypot(v.x,v.z);
+    if(len>.05){
+      this.cat.position.x+=v.x*dt*5;this.cat.position.z+=v.z*dt*5;
+      this.cat.rotation.y=Math.atan2(v.x,v.z);
+      this.stepTimer+=dt;if(this.stepTimer>.22){this.stepTimer=0;this.music.stepSound()}
     }
-      if(!q.item){this.quest.complete(q.id);n.friend=clamp(n.friend+1,0,3);this.ach.unlock('Друг '+n.name);this.ui.dialogue(n,`Ты справился. ${n.line}`);return}
-      this.ui.dialogue(n,`Мне нужен предмет: ${n.item||q.item}. Найди его и вернись ко мне.`);return
+    this.cat.position.x=clamp(this.cat.position.x,-34,34);this.cat.position.z=clamp(this.cat.position.z,-34,34);
+    this.stats.satiety=clamp(this.stats.satiety-dt*.15,0,100);this.stats.energy=clamp(this.stats.energy-dt*.1+(len<.05?dt*.25:0),0,100);this.stats.mood=clamp(this.stats.mood+dt*.03,0,100);
+    for(const obj of this.itemObjects){obj.rotation.y+=dt;obj.position.y=.55+Math.sin(performance.now()/400+obj.position.x)*.12}
+    for(const f of this.fireflies){f.position.y+=Math.sin(performance.now()/600+f.position.x)*.002;f.visible=this.time==='evening'||this.time==='night'}
+    for(const n of this.npcs)n.lookAt(this.cat.position.x,n.position.y,this.cat.position.z);
+    this.camera.position.lerp(new THREE.Vector3(this.cat.position.x,16,this.cat.position.z+18),.07);this.camera.lookAt(this.cat.position.x,0,this.cat.position.z);
+  }
+  render(){
+    const sky={morning:0x9bd7ff,day:0x83cfff,evening:0xff9a6b,night:0x141c48}[this.time];this.scene.background=new THREE.Color(sky);
+    this.sun.intensity=this.time==='night'?.55:this.time==='evening'?1.4:2.7;this.amb.intensity=this.time==='night'?.8:1.55;
+    this.fire.material.emissive?.setHex?.(0xff5b22);this.fire.scale.setScalar(1+Math.sin(performance.now()/120)*.08);
+    this.renderer.render(this.scene,this.camera);
+  }
+  nearestNPC(){return this.npcs.map(n=>({n,d:dist2(this.cat.position,n.position)})).sort((a,b)=>a.d-b.d)[0]}
+  nearestItem(){return this.itemObjects.map(o=>({o,it:o.userData.item,d:dist2(this.cat.position,o.position)})).filter(x=>!this.inventory.some(i=>i.id===x.it.id)).sort((a,b)=>a.d-b.d)[0]}
+  zone(){
+    const p=this.cat.position;
+    if(p.distanceTo(new THREE.Vector3(3,0,3))<3)return'corner';
+    if(p.distanceTo(new THREE.Vector3(-15,0,-12))<4)return'greenhouse';
+    return'yard';
+  }
+  actionHint(){
+    const it=this.nearestItem();if(it&&it.d<1.6)return'Можно поднять предмет';
+    const npc=this.nearestNPC();if(npc&&npc.d<2.2)return'Можно поговорить';
+    const z=this.zone();const item=this.inventory.find(i=>i.target===`zone:${z}`);if(item)return`Можно применить: ${item.name}`;
+    return'Исследуй двор';
+  }
+  interact(){
+    const it=this.nearestItem();if(it&&it.d<1.6){this.pickup(it);return}
+    const npc=this.nearestNPC();if(npc&&npc.d<2.2){this.talk(npc.n);return}
+    const z=this.zone();const item=this.inventory.find(i=>i.target===`zone:${z}`);if(item){this.useItem(item.id);return}
+    this.ui.toast('Рядом ничего нет');this.music.bad();
+  }
+  pickup(x){this.inventory.push(x.it);this.scene.remove(x.o);this.itemObjects=this.itemObjects.filter(o=>o!==x.o);this.music.pickup();this.ui.toast(`${x.it.emoji} ${x.it.name}`)}
+  talk(n){
+    const name=n.userData.name;const q=this.quests.find(q=>q.npc===name&&!q.done);
+    if(q&&q.item){
+      if(this.inventory.some(i=>i.id===q.item)){this.complete(q.id);this.inventory=this.inventory.filter(i=>i.id!==q.item);n.userData.friend++;this.ui.dialogue(n.userData,`Спасибо, Рыжик! ${n.userData.line}`);return}
+      this.ui.dialogue(n.userData,`Мне нужен предмет для задания. ${n.userData.line}`);return
     }
-    if(n.name==='Лёха'&&this.world.time==='вечер'&&this.npcs.filter(x=>x.friend>=1).length>=6){this.quest.complete('q18')}
-    if(n.name==='Лёха'&&game.world.time==='вечер'){this.quest.complete('q21')}
-    if(n.name==='Настя'&&game.world.weather==='дождь'){this.quest.complete('q22')}
-    if(n.name==='Кристина'&&game.world.time==='ночь'&&game.quest.done('q9')){this.quest.complete('q24')}
-    this.ui.dialogue(n,n.line)
+    if(q&&!q.item){this.complete(q.id);n.userData.friend++;this.ui.dialogue(n.userData,`Ты помог мне. ${n.userData.line}`);return}
+    this.ui.dialogue(n.userData,n.userData.line);
   }
-  meow(){this.player.meowTimer=.9;this.audio.meow();this.ach.unlock('Первый мяу');this.player.stats.mood=clamp(this.player.stats.mood+2,0,100)}
-  updateActionHint(){
-    const btn=$('btnAction');
-    const item=this.nearestItem();
-    const npc=this.nearestNPC();
-    const zone=this.world.zoneAt(this.player);
-    if(item&&item.d<72){btn.textContent='Поднять';return}
-    if(npc&&npc.d<96){btn.textContent='Говорить';return}
-    const invItem=this.inv.items?.find?.(i=>i.target===`zone:${zone}`);
-    if(invItem){btn.textContent='Применить';return}
-    btn.textContent='Действие';
+  useItem(id){
+    const item=this.inventory.find(i=>i.id===id);if(!item)return;
+    if(item.target?.startsWith('npc:')){
+      const name=item.target.split(':')[1];const n=this.nearestNPC();
+      if(n&&n.d<2.4&&n.n.userData.name===name){this.talk(n.n);return}
+      this.ui.toast(`Подойди к ${name}`);this.music.bad();return;
+    }
+    if(item.target?.startsWith('zone:')){
+      const z=item.target.split(':')[1];
+      if(this.zone()!==z){this.ui.toast('Нужно другое место');this.music.bad();return}
+      if(id==='bowl'){this.complete('q1');this.inventory=this.inventory.filter(i=>i.id!==id);this.ui.toast('Миска стоит в уютном уголке');return}
+      if(id==='sunbell'){this.complete('q20');this.ui.toast('Финал: двор снова стал тёплым');return}
+    }
   }
-  toast(m){const el=$('toast');el.textContent=m;el.classList.remove('hidden');clearTimeout(this.toastT);this.toastT=setTimeout(()=>el.classList.add('hidden'),1900)}
+  complete(id){const q=this.quests.find(q=>q.id===id);if(q&&!q.done){q.done=true;this.stats.fame+=8;this.music.quest();this.ui.toast(`Квест выполнен: ${q.title}`)}}
+  meow(){this.music.meow();this.ui.toast('Мяу!')}
+  save(){localStorage.setItem('ryzhik3d-save',JSON.stringify({pos:this.cat.position.toArray(),inventory:this.inventory,quests:this.quests.map(q=>q.done),stats:this.stats,time:this.time,weather:this.weather}));this.ui.toast('Сохранено')}
+  load(){const s=localStorage.getItem('ryzhik3d-save');if(!s)return;const d=JSON.parse(s);this.cat.position.fromArray(d.pos);this.inventory=d.inventory||[];d.quests?.forEach((v,i)=>this.quests[i].done=v);this.stats=d.stats||this.stats;this.time=d.time||this.time;this.weather=d.weather||this.weather}
 }
-new Game();
-})();
+
+new Game3D();
