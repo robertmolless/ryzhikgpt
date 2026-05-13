@@ -263,16 +263,42 @@ class QuestSystem{
 }
 
 class Inventory{
-  constructor(){this.items=[]}
+  constructor(){
+    this.items=[];
+    this.db={
+      bowl:{id:'bowl',name:'миска',emoji:'🥣',use:'Поставить у кошачьего уголка',target:'zone:Кошачий уголок',quest:'q1'},
+      cassette:{id:'cassette',name:'старая кассета',emoji:'📼',use:'Отдать Лёхе',target:'npc:Лёха',quest:'q2'},
+      pick:{id:'pick',name:'медиатор',emoji:'🎸',use:'Отдать Игорю',target:'npc:Игорь',quest:'q3'},
+      stickers:{id:'stickers',name:'наклейки',emoji:'⭐',use:'Отдать Лизе',target:'npc:Лиза',quest:'q5'},
+      moonbell:{id:'moonbell',name:'лунный колокольчик',emoji:'🔔',use:'Показать Магу ночью',target:'npc:Маг',quest:'q6'},
+      leaf:{id:'leaf',name:'редкий лист',emoji:'🍃',use:'Отдать Соне',target:'npc:Соня',quest:'q7'},
+      pages:{id:'pages',name:'страницы дневника',emoji:'📜',use:'Отдать Нэне',target:'npc:Нэна',quest:'q8'},
+      parts:{id:'parts',name:'детали фонаря',emoji:'🔩',use:'Отдать Кристине',target:'npc:Кристина',quest:'q9'},
+      button:{id:'button',name:'пуговица',emoji:'🔘',use:'Отдать Дане',target:'npc:Даня',quest:'q10'},
+      greenhouseKey:{id:'greenhouseKey',name:'ключ от теплицы',emoji:'🗝️',use:'Открыть теплицу',target:'zone:Теплица',quest:'q19'},
+      sunbell:{id:'sunbell',name:'солнечный колокольчик',emoji:'🌞',use:'Завершить тайну теплицы',target:'zone:Теплица',quest:'q20'},
+      toy:{id:'toy',name:'игрушечная мышь',emoji:'🐁',use:'Положить в уголок',target:'zone:Кошачий уголок',quest:'q25'},
+      ribbon:{id:'ribbon',name:'ленточка',emoji:'🎀',use:'Украсить уголок',target:'zone:Кошачий уголок',quest:'q25'},
+      shiny:{id:'shiny',name:'блестящий камешек',emoji:'💎',use:'Оставить как декор',target:'zone:Кошачий уголок',quest:'q25'}
+    };
+  }
   normalize(){
-    this.items=this.items.map(x=>typeof x==='string'?{id:x,name:x,emoji:'🎒'}:x);
+    this.items=this.items.map(x=>{
+      if(typeof x==='string'){
+        const found=Object.values(this.db).find(i=>i.id===x||i.name===x);
+        return found ? {...found} : {id:x,name:x,emoji:'🎒',use:'Осмотреть',target:null,quest:null};
+      }
+      const db=this.db[x.id] || Object.values(this.db).find(i=>i.name===x.name);
+      return db ? {...db,...x} : x;
+    });
   }
   add(it){
     this.normalize();
-    if(!this.items.some(x=>x.id===it.id||x.name===it.name)){
-      this.items.push({id:it.id,name:it.name,emoji:it.emoji||'🎒'});
+    const db=this.db[it.id] || Object.values(this.db).find(x=>x.name===it.name) || it;
+    if(!this.items.some(x=>x.id===db.id||x.name===db.name)){
+      this.items.push({...db});
       game.audio.pickup();
-      game.toast(`Найдено: ${it.name}`);
+      game.toast(`Найдено: ${db.emoji||'🎒'} ${db.name}`);
     }
   }
   hasId(id){this.normalize();return this.items.some(x=>x.id===id)}
@@ -284,18 +310,55 @@ class Inventory{
     this.items=this.items.filter(x=>x.id!==id);
     return this.items.length!==before;
   }
-  useNearest(){
-    const n=game.nearestNPC();
-    if(n&&n.d<120){
-      game.talk(n.n, true);
-      return;
+  get(id){
+    this.normalize();
+    return this.items.find(x=>x.id===id);
+  }
+  useItem(id){
+    this.normalize();
+    const item=this.get(id);
+    if(!item){game.toast('Предмет не найден');return false}
+    const zone=game.world.zoneAt(game.player);
+    const nearest=game.nearestNPC();
+    const nearNpc=nearest && nearest.d<130 ? nearest.n : null;
+
+    let ok=false;
+    if(item.target?.startsWith('npc:')){
+      const name=item.target.split(':')[1];
+      ok=nearNpc && nearNpc.name===name;
+      if(!ok){game.toast(`${item.emoji} ${item.name}: подойди к ${name}`);game.audio.bad();return false}
+      game.talk(nearNpc,true,id);
+      return true;
     }
+    if(item.target?.startsWith('zone:')){
+      const targetZone=item.target.split(':')[1];
+      ok=zone===targetZone;
+      if(!ok){game.toast(`${item.emoji} ${item.name}: нужно место «${targetZone}»`);game.audio.bad();return false}
+      if(item.id==='bowl'){game.quest.complete('q1');game.quest.complete('q12');this.removeById(item.id);game.upgrades.bought.push('bowl');game.toast('Миска поставлена в кошачьем уголке');return true}
+      if(item.id==='greenhouseKey'){game.quest.complete('q19');game.world.unlockedZones.push('Теплица');this.removeById(item.id);game.toast('Теплица открыта');return true}
+      if(item.id==='sunbell'){game.quest.complete('q20');game.ach.unlock('Настоящий хозяин двора');game.toast('Солнечный колокольчик вернул уют дому');return true}
+      if(item.quest){game.quest.complete(item.quest);this.removeById(item.id);return true}
+    }
+    game.toast(`${item.emoji} ${item.name}: пока некуда применить`);
+    return false;
+  }
+  useNearest(){
+    this.normalize();
     const q=game.quest.active();
     if(q?.item && this.hasId(q.item)){
-      game.toast('Подойди к нужному персонажу, чтобы отдать предмет');
-    } else {
-      game.toast('Сейчас нечего использовать');
+      this.useItem(q.item);
+      return;
     }
+    const nearest=game.nearestNPC();
+    if(nearest&&nearest.d<130){
+      const npc=nearest.n;
+      const item=this.items.find(i=>i.target===`npc:${npc.name}`);
+      if(item){this.useItem(item.id);return}
+    }
+    const zone=game.world.zoneAt(game.player);
+    const item=this.items.find(i=>i.target===`zone:${zone}`);
+    if(item){this.useItem(item.id);return}
+    game.toast('Нет подходящего предмета для этого места');
   }
 }
 
@@ -416,9 +479,16 @@ class UIManager{
   }
   showInventory(){
     game.inv.normalize();
-    const html = game.inv.items.length
-      ? game.inv.items.map(i=>`<div class="card invItem"><span class="invEmoji">${i.emoji||'🎒'}</span><b>${i.name}</b><br><small>ID: ${i.id}</small></div>`).join('') + `<button onclick="game.inv.useNearest();game.ui.closeModal()">Использовать рядом</button>`
-      : '<p>Пока пусто.</p>';
+    const items=game.inv.items;
+    const html = items.length
+      ? `<div class="invGrid">${items.map(i=>`
+          <button class="invCard" onclick="game.inv.useItem('${i.id}');game.ui.showInventory()">
+            <span class="invBig">${i.emoji||'🎒'}</span>
+            <b>${i.name}</b>
+            <small>${i.use||'Осмотреть'}</small>
+          </button>`).join('')}</div>
+         <button onclick="game.inv.useNearest();game.ui.closeModal()">Использовать подходящий предмет рядом</button>`
+      : '<p>Пока пусто. Подбирай предметы на карте.</p>';
     this.modal('🎒 Инвентарь', html);
   }
   showQuests(){this.modal('📜 Квесты',game.quest.quests.map(q=>`<div class="card ${q.done?'done':''}">${q.done?'✅':'⬜'} <b>${q.order}. ${q.title}</b><br><small>${q.hint}</small></div>`).join(''))}
@@ -515,7 +585,7 @@ class Game{
   loop(t){const dt=Math.min(.05,(t-this.last)/1000);this.last=t;if(!this.paused)this.update(dt);this.renderer.render();this.ui.update();requestAnimationFrame(tt=>this.loop(tt))}
   update(dt){
     let v=this.input.vector();if(Math.hypot(this.mobile.vec.x,this.mobile.vec.y)>.05)v=this.mobile.vec;
-    this.player.update(dt,v);this.world.update(dt);this.audio.update(dt);this.ach.check();
+    this.player.update(dt,v);this.world.update(dt);this.audio.update(dt);this.updateActionHint();this.ach.check();
     if(this.input.meow){this.meow();this.input.meow=false}
     if(this.input.keys.e){this.tryInteract();this.input.keys.e=false}
     if(this.input.keys.i){this.ui.showInventory();this.input.keys.i=false}
@@ -539,15 +609,27 @@ class Game{
     if(zone==='Поляна' && (this.world.time==='ночь'||this.world.time==='вечер')){this.mini.fireflies();return}
     const ni=this.nearestItem(); if(ni&&ni.d<72){this.inv.add(ni.it); if(ni.it.id==='bowl')this.quest.complete('q1'); if(ni.it.id==='greenhouseKey')this.quest.complete('q19'); if(ni.it.id==='sunbell')this.quest.complete('q20'); this.tg.vibrate(); return}
     const nn=this.nearestNPC(); if(nn&&nn.d<96){this.talk(nn.n);this.tg.vibrate();return}
+    const zi=this.inv.items?.find?.(i=>i.target===`zone:${zone}`); if(zi){this.inv.useItem(zi.id);return}
     if(zone==='Кошачий уголок'){this.ui.showUpgrades();return}
     this.toast('Рядом ничего нет')
   }
-  talk(n, fromInventory=false){
+  talk(n, fromInventory=false, itemId=null){
     if(n.name==='Игорь'&&this.world.time==='вечер'&&this.quest.done('q3')){this.mini.concert();return}
     if(n.name==='Настя'&&(this.world.time==='вечер'||this.world.time==='ночь')&&this.world.zoneAt(this.player)==='Поляна'){this.mini.fireflies();return}
     const q=this.quest.quests.find(q=>q.id===n.quest);
     if(q&&!q.done){
-      if(q.item&&(this.inv.hasId(q.item)||this.inv.hasName(q.item)||this.inv.hasName(n.item))){this.quest.complete(q.id);this.inv.removeById(q.item);n.friend=clamp(n.friend+1,0,3);this.ach.unlock('Друг '+n.name);this.ui.dialogue(n,`Спасибо, Рыжик! Ты отдал нужный предмет. Теперь я тебе доверяю. ${n.line}`);return}
+      if(q.item && (this.inv.hasId(q.item)||this.inv.hasName(q.item)||this.inv.hasName(n.item))){
+      if(itemId && itemId!==q.item){
+        this.ui.dialogue(n,`Это мило, но мне сейчас нужен другой предмет: ${n.item||q.item}.`);
+        return;
+      }
+      this.quest.complete(q.id);
+      this.inv.removeById(q.item);
+      n.friend=clamp(n.friend+1,0,3);
+      this.ach.unlock('Друг '+n.name);
+      this.ui.dialogue(n,`Спасибо, Рыжик! Ты отдал нужный предмет. Теперь я тебе доверяю. ${n.line}`);
+      return
+    }
       if(!q.item){this.quest.complete(q.id);n.friend=clamp(n.friend+1,0,3);this.ach.unlock('Друг '+n.name);this.ui.dialogue(n,`Ты справился. ${n.line}`);return}
       this.ui.dialogue(n,`Мне нужен предмет: ${n.item||q.item}. Найди его и вернись ко мне.`);return
     }
@@ -558,6 +640,17 @@ class Game{
     this.ui.dialogue(n,n.line)
   }
   meow(){this.player.meowTimer=.9;this.audio.meow();this.ach.unlock('Первый мяу');this.player.stats.mood=clamp(this.player.stats.mood+2,0,100)}
+  updateActionHint(){
+    const btn=$('btnAction');
+    const item=this.nearestItem();
+    const npc=this.nearestNPC();
+    const zone=this.world.zoneAt(this.player);
+    if(item&&item.d<72){btn.textContent='Поднять';return}
+    if(npc&&npc.d<96){btn.textContent='Говорить';return}
+    const invItem=this.inv.items?.find?.(i=>i.target===`zone:${zone}`);
+    if(invItem){btn.textContent='Применить';return}
+    btn.textContent='Действие';
+  }
   toast(m){const el=$('toast');el.textContent=m;el.classList.remove('hidden');clearTimeout(this.toastT);this.toastT=setTimeout(()=>el.classList.add('hidden'),1900)}
 }
 new Game();
