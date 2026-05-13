@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
-  <title>Рыжик 3D: Тайна загородного дома</title>
+  <title>Рыжик 3D: Тайна загородного дома — V8</title>
   <link rel="manifest" href="manifest.json"/>
   <link rel="stylesheet" href="style.css"/>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -23,19 +23,22 @@
   <div id="questBox">
     <b id="questTitle">Квест</b>
     <span id="questHint">Подойди к Лёхе</span>
-    <i id="actionHint">Двигайся джойстиком</i>
+    <i id="actionHint">Исследуй двор</i>
+    <div class="progress"><em id="questProgress"></em></div>
   </div>
 
   <div id="toast" class="hidden"></div>
 
   <div id="menu" class="panel">
     <h1>🐈 Рыжик 3D</h1>
-    <p>Тайна загородного дома</p>
+    <p>Тайна загородного дома — V8 Ultimate</p>
     <button id="newGame">Новая игра</button>
     <button id="continueGame">Продолжить</button>
     <button id="saveGame">Сохранить</button>
     <button id="inventoryBtn">Инвентарь</button>
     <button id="questsBtn">Квесты</button>
+    <button id="achBtn">Достижения</button>
+    <button id="qualityBtn">Графика: авто</button>
     <button id="musicBtn">Музыка: вкл</button>
   </div>
 
@@ -54,11 +57,19 @@
     </div>
   </div>
 
+  <div id="minigame" class="minigame hidden">
+    <h2 id="miniTitle"></h2>
+    <p id="miniText"></p>
+    <div id="miniArea"></div>
+    <button id="miniClose">Закрыть</button>
+  </div>
+
   <div id="controls">
     <div id="stickZone"><div id="stick"></div></div>
     <div id="buttons">
       <button id="btnInv">🎒</button>
       <button id="btnQuest">📜</button>
+      <button id="btnMap">🗺️</button>
       <button id="btnMenu">☰</button>
       <button id="btnMeow" class="big">Мяу</button>
       <button id="btnAction" class="big action">Действие</button>

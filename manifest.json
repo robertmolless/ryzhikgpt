@@ -1,10 +1,10 @@
 {
-  "name": "Рыжик 3D: Тайна загородного дома",
+  "name": "Рыжик 3D: Тайна загородного дома V8",
   "short_name": "Рыжик 3D",
   "start_url": "./index.html",
   "display": "fullscreen",
   "background_color": "#111111",
   "theme_color": "#ffb84a",
   "orientation": "any",
-  "description": "3D cozy WebGL игра про рыжего кота для Telegram WebApp."
+  "description": "V8 cozy 3D WebGL игра про рыжего кота для Telegram WebApp."
 }
