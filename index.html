@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+  <title>Рыжик: Тайна загородного дома</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <div id="hud" class="hud hidden">
+    <b>🐈 Рыжик</b><span>🍗 <i id="satiety">100</i></span><span>⚡ <i id="energy">100</i></span><span>😊 <i id="mood">100</i></span><span>⭐ <i id="fame">0</i></span><em id="timeWeather">Утро • Солнце</em>
+  </div>
+  <div id="quest" class="quest hidden"><b id="questTitle"></b><small id="questHint"></small></div>
+  <div id="toast" class="toast hidden"></div>
+  <div id="menu" class="panel menu"><h1>🐈 Рыжик</h1><p>Тайна загородного дома</p><button id="newGame">Новая игра</button><button id="continueGame">Продолжить</button><button id="about">Об игре</button></div>
+  <div id="modal" class="panel hidden"><button id="closeModal" class="close">×</button><h2 id="modalTitle"></h2><div id="modalContent"></div></div>
+  <div id="dialogue" class="dialogue hidden"><div id="portrait"></div><div><b id="speaker"></b><p id="dialogueText"></p><small>Тапни, чтобы продолжить</small></div></div>
+  <div id="controls" class="mobile hidden"><div id="stickZone"><div id="stick"></div></div><div class="btns"><button id="btnMap">🗺️</button><button id="btnQuest">📜</button><button id="btnInv">🎒</button><button id="btnPause">⏸</button><button id="btnMeow" class="big">Мяу</button><button id="btnAction" class="big action">Действие</button></div></div>
+  <script src="game.js"></script>
+</body>
+</html>
