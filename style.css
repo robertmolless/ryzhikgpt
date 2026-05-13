@@ -30,3 +30,6 @@ button:active{transform:translateY(5px);box-shadow:0 3px 0 #a65b24}
 .note{position:absolute;width:34px;height:34px;border-radius:50%;background:#ffdb69;border:3px solid #7a4a24}
 .upgrade{display:flex;justify-content:space-between;gap:10px;align-items:center}
 @media (max-width:480px){.hud{font-size:12px;gap:5px}.brand{display:none}.stat,.pill{padding:7px 9px}.quest{top:50px}.dialogue{bottom:118px}.buttons{grid-template-columns:58px 58px 82px}.buttons button{width:58px}.buttons .big{width:82px}.stick-zone{width:118px;height:118px}#stick{left:37px;top:37px}}
+
+.invItem{display:grid;grid-template-columns:46px 1fr;align-items:center;text-align:left}
+.invEmoji{font-size:34px;grid-row:span 2}

@@ -182,8 +182,39 @@ class QuestSystem{
 
 class Inventory{
   constructor(){this.items=[]}
-  add(it){if(!this.items.includes(it.name)){this.items.push(it.name);game.audio.pickup();game.toast(`Найдено: ${it.name}`)}}
-  has(n){return this.items.includes(n)}
+  normalize(){
+    this.items=this.items.map(x=>typeof x==='string'?{id:x,name:x,emoji:'🎒'}:x);
+  }
+  add(it){
+    this.normalize();
+    if(!this.items.some(x=>x.id===it.id||x.name===it.name)){
+      this.items.push({id:it.id,name:it.name,emoji:it.emoji||'🎒'});
+      game.audio.pickup();
+      game.toast(`Найдено: ${it.name}`);
+    }
+  }
+  hasId(id){this.normalize();return this.items.some(x=>x.id===id)}
+  hasName(name){this.normalize();return this.items.some(x=>x.name===name)}
+  has(x){return this.hasId(x)||this.hasName(x)}
+  removeById(id){
+    this.normalize();
+    const before=this.items.length;
+    this.items=this.items.filter(x=>x.id!==id);
+    return this.items.length!==before;
+  }
+  useNearest(){
+    const n=game.nearestNPC();
+    if(n&&n.d<120){
+      game.talk(n.n, true);
+      return;
+    }
+    const q=game.quest.active();
+    if(q?.item && this.hasId(q.item)){
+      game.toast('Подойди к нужному персонажу, чтобы отдать предмет');
+    } else {
+      game.toast('Сейчас нечего использовать');
+    }
+  }
 }
 
 class UpgradeSystem{
@@ -265,7 +296,7 @@ class SaveSystem{
   load(){
     const s=localStorage.getItem('ryzhik-v2-save')||localStorage.getItem('ryzhik-save'); if(!s)return false;
     const d=JSON.parse(s); if(d.p){game.player.x=d.p.x;game.player.y=d.p.y;game.player.stats=d.p.stats}
-    game.inv.items=d.inv||[]; d.quests?.forEach((v,i)=>game.quest.quests[i]&&(game.quest.quests[i].done=v));
+    game.inv.items=d.inv||[]; game.inv.normalize(); d.quests?.forEach((v,i)=>game.quest.quests[i]&&(game.quest.quests[i].done=v));
     game.ach.unlocked=d.ach||[]; d.npc?.forEach((v,i)=>game.npcs[i]&&(game.npcs[i].friend=v));
     Object.assign(game.world,d.world||{}); game.upgrades.bought=d.upgrades||[]; return true
   }
@@ -292,7 +323,13 @@ class UIManager{
     $('timeWeather').textContent=`${game.world.time} • ${game.world.weather} • ${game.world.zoneAt(game.player)}`;
     const q=game.quest.active(); $('questTitle').textContent=`${q.order}. ${q.title}`;$('questHint').textContent=q.hint;$('questProgress').style.width=(game.quest.progress()*100)+'%';
   }
-  showInventory(){this.modal('🎒 Инвентарь',game.inv.items.length?`<ul>${game.inv.items.map(i=>`<li>${i}</li>`).join('')}</ul>`:'<p>Пока пусто.</p>')}
+  showInventory(){
+    game.inv.normalize();
+    const html = game.inv.items.length
+      ? game.inv.items.map(i=>`<div class="card invItem"><span class="invEmoji">${i.emoji||'🎒'}</span><b>${i.name}</b><br><small>ID: ${i.id}</small></div>`).join('') + `<button onclick="game.inv.useNearest();game.ui.closeModal()">Использовать рядом</button>`
+      : '<p>Пока пусто.</p>';
+    this.modal('🎒 Инвентарь', html);
+  }
   showQuests(){this.modal('📜 Квесты',game.quest.quests.map(q=>`<div class="card ${q.done?'done':''}">${q.done?'✅':'⬜'} <b>${q.order}. ${q.title}</b><br><small>${q.hint}</small></div>`).join(''))}
   showMap(){this.modal('🗺️ Карта',`<p>Текущая зона: <b>${game.world.zoneAt(game.player)}</b></p>`+game.world.zones.map(z=>`<div class="card">${game.world.unlockedZones.includes(z.name)?'🔓':'🔒'} ${z.name}</div>`).join(''))}
   showAchievements(){this.modal('🏆 Достижения',game.ach.list.map(a=>`<div class="card">${game.ach.unlocked.includes(a)?'✅':'⬜'} ${a}</div>`).join(''))}
@@ -309,7 +346,7 @@ class Renderer{
   render(){
     const ctx=this.ctx,p=game.player,cam={x:clamp(p.x-innerWidth/2,0,game.world.w-innerWidth),y:clamp(p.y-innerHeight/2,0,game.world.h-innerHeight)};
     ctx.clearRect(0,0,innerWidth,innerHeight);ctx.save();ctx.translate(-cam.x,-cam.y);
-    this.drawGrass(ctx);this.drawCloudShadows(ctx);this.drawWorld(ctx);this.drawItems(ctx);game.npcs.forEach(n=>this.drawHumanNPC(ctx,n));this.drawCat(ctx,p);this.drawFireflies(ctx);ctx.restore();
+    this.drawGrass(ctx);this.drawPaths(ctx);this.drawCloudShadows(ctx);this.drawWorld(ctx);this.drawItems(ctx);game.npcs.forEach(n=>this.drawHumanNPC(ctx,n));this.drawCat(ctx,p);this.drawFireflies(ctx);ctx.restore();
     this.drawLightingOverlay(ctx);this.drawMiniMap(ctx);
   }
   round(ctx,x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fill();ctx.stroke()}
@@ -317,8 +354,34 @@ class Renderer{
     const g=ctx.createLinearGradient(0,0,0,game.world.h);g.addColorStop(0,'#8fd36d');g.addColorStop(1,'#5ea64c');ctx.fillStyle=g;ctx.fillRect(0,0,game.world.w,game.world.h);
     for(let i=0;i<950;i++){const x=(i*137)%game.world.w,y=(i*277)%game.world.h;ctx.fillStyle=i%3?'#74ad59':'#a1db80';ctx.fillRect(x,y,2+(i%3),8+(i%7))}
   }
+  drawPaths(ctx){
+    ctx.save();
+    ctx.strokeStyle='rgba(183,132,74,.55)';
+    ctx.lineWidth=54; ctx.lineCap='round'; ctx.lineJoin='round';
+    ctx.beginPath();
+    ctx.moveTo(1030,720); ctx.lineTo(1030,540); ctx.lineTo(520,1210); ctx.moveTo(1030,720); ctx.lineTo(1600,1330);
+    ctx.moveTo(1030,720); ctx.lineTo(1420,650); ctx.lineTo(1980,650); ctx.lineTo(2010,360);
+    ctx.moveTo(1030,720); ctx.lineTo(1780,1120);
+    ctx.stroke();
+    ctx.strokeStyle='rgba(255,235,170,.25)'; ctx.lineWidth=18; ctx.stroke();
+    ctx.restore();
+  }
   drawCloudShadows(ctx){ctx.fillStyle='rgba(255,255,255,.12)';for(const c of game.world.clouds){ctx.beginPath();ctx.ellipse(c.x,c.y,90*c.s,30*c.s,0,0,7);ctx.fill()}}
-  drawWorld(ctx){this.drawHouse(ctx,820,250);this.drawBarn(ctx,300,1080);this.drawGreenhouse(ctx,300,230);this.drawPond(ctx,1460,1230);this.drawFence(ctx,1680,1040);this.drawTrees(ctx);this.drawFlowers(ctx);this.drawWell(ctx,720,1190);this.drawCatCorner(ctx,1050,800);this.drawCampfire(ctx,1900,360)}
+  drawWorld(ctx){this.drawDecor(ctx);this.drawHouse(ctx,820,250);this.drawBarn(ctx,300,1080);this.drawGreenhouse(ctx,300,230);this.drawPond(ctx,1460,1230);this.drawFence(ctx,1680,1040);this.drawTrees(ctx);this.drawFlowers(ctx);this.drawWell(ctx,720,1190);this.drawCatCorner(ctx,1050,800);this.drawCampfire(ctx,1900,360)}
+  drawDecor(ctx){
+    ctx.save();
+    for(let i=0;i<38;i++){
+      const x=180+(i*229)%2080, y=210+(i*317)%1430;
+      ctx.fillStyle='rgba(80,55,35,.18)';
+      ctx.beginPath(); ctx.ellipse(x,y,34+(i%5)*8,10+(i%3)*4,(i%7)*.4,0,7); ctx.fill();
+      if(i%4===0){ctx.fillStyle='#d99a4a';ctx.fillRect(x-18,y-18,36,24);ctx.strokeStyle='#6b3b20';ctx.strokeRect(x-18,y-18,36,24)}
+      if(i%5===0){ctx.fillStyle='#fff3';ctx.beginPath();ctx.arc(x+20,y-20,8,0,7);ctx.fill()}
+    }
+    // string lights
+    ctx.strokeStyle='rgba(80,45,25,.65)'; ctx.lineWidth=4; ctx.beginPath(); ctx.moveTo(850,610); ctx.quadraticCurveTo(1250,520,1600,650); ctx.stroke();
+    for(let i=0;i<9;i++){const x=880+i*88,y=600-Math.sin(i*.8)*35;ctx.fillStyle='#ffd66b';ctx.beginPath();ctx.arc(x,y,8,0,7);ctx.fill()}
+    ctx.restore();
+  }
   drawHouse(ctx,x,y){ctx.save();ctx.shadowColor='#0005';ctx.shadowBlur=22;ctx.shadowOffsetY=16;ctx.fillStyle='#a85c36';ctx.strokeStyle='#5b2b1b';ctx.lineWidth=5;this.round(ctx,x,y+130,420,280,18);ctx.fillStyle='#73351f';ctx.beginPath();ctx.moveTo(x-30,y+145);ctx.lineTo(x+210,y);ctx.lineTo(x+450,y+145);ctx.closePath();ctx.fill();ctx.stroke();ctx.fillStyle=game.world.time==='ночь'?'#ffd36d':'#aee0ff';for(let i=0;i<3;i++){ctx.fillRect(x+70+i*120,y+190,58,70);ctx.strokeRect(x+70+i*120,y+190,58,70)}ctx.fillStyle='#5d3724';ctx.fillRect(x+180,y+280,80,130);ctx.restore()}
   drawBarn(ctx,x,y){ctx.save();ctx.shadowColor='#0004';ctx.shadowBlur=18;ctx.fillStyle='#8f3f2d';ctx.strokeStyle='#522';ctx.lineWidth=4;this.round(ctx,x,y,360,250,14);ctx.fillStyle='#c85d42';ctx.fillRect(x+130,y+90,100,160);ctx.strokeRect(x+130,y+90,100,160);ctx.restore()}
   drawGreenhouse(ctx,x,y){ctx.save();ctx.fillStyle='#9de0bf88';ctx.strokeStyle='#3b7661';ctx.lineWidth=5;this.round(ctx,x,y,330,230,28);for(let i=0;i<5;i++){ctx.beginPath();ctx.moveTo(x+i*70,y);ctx.lineTo(x+i*70,y+230);ctx.stroke()}ctx.restore()}
@@ -329,7 +392,7 @@ class Renderer{
   drawWell(ctx,x,y){ctx.fillStyle='#8a7667';ctx.beginPath();ctx.arc(x+60,y+60,55,0,7);ctx.fill();ctx.strokeStyle='#493a31';ctx.lineWidth=5;ctx.stroke();ctx.fillStyle='#32251f';ctx.beginPath();ctx.arc(x+60,y+60,32,0,7);ctx.fill()}
   drawCampfire(ctx,x,y){ctx.fillStyle='#6b3b20';ctx.fillRect(x-45,y+24,90,12);if(game.world.time==='вечер'||game.world.time==='ночь'){ctx.fillStyle='#ffb13b';ctx.beginPath();ctx.arc(x,y,30+Math.sin(performance.now()/120)*4,0,7);ctx.fill();ctx.fillStyle='#ff553b';ctx.beginPath();ctx.arc(x,y+5,18,0,7);ctx.fill()}}
   drawCatCorner(ctx,x,y){ctx.fillStyle='#ffe0a0';ctx.strokeStyle='#86511f';ctx.lineWidth=4;this.round(ctx,x,y,220,160,22);ctx.font='26px serif';let xx=x+20;for(const id of game.upgrades.bought){const u=game.upgrades.list.find(a=>a.id===id);ctx.fillText(u?.emoji||'🐾',xx,y+95);xx+=28}}
-  drawItems(ctx){for(const it of game.world.items){if(game.inv.items.includes(it.name))continue;if(it.night&&game.world.time!=='ночь')continue;if(it.locked&&!game.canSeeLockedItem(it))continue;ctx.font='30px serif';ctx.fillText(it.emoji,it.x,it.y)}}
+  drawItems(ctx){for(const it of game.world.items){if(game.inv.hasId(it.id)||game.inv.hasName(it.name))continue;if(it.night&&game.world.time!=='ночь')continue;if(it.locked&&!game.canSeeLockedItem(it))continue;ctx.font='30px serif';ctx.fillText(it.emoji,it.x,it.y)}}
   drawHumanNPC(ctx,n){if(!n.active(game.world.time))return;ctx.save();ctx.translate(n.x,n.y);ctx.fillStyle='#0004';ctx.beginPath();ctx.ellipse(0,38,30,10,0,0,7);ctx.fill();ctx.fillStyle=n.color;ctx.fillRect(-20,-18,40,58);ctx.fillStyle=n.skin||'#f0ba8e';ctx.beginPath();ctx.arc(0,-38,23,0,7);ctx.fill();ctx.fillStyle=n.hair;ctx.beginPath();ctx.arc(0,-50,25,Math.PI,0);ctx.fill();if(n.hat){ctx.fillStyle='#2b1b35';ctx.beginPath();ctx.moveTo(-32,-58);ctx.lineTo(0,-102);ctx.lineTo(32,-58);ctx.closePath();ctx.fill()}if(n.glasses){ctx.strokeStyle=n.name==='Даня'?'#f33':'#111';ctx.lineWidth=3;ctx.strokeRect(-18,-43,14,10);ctx.strokeRect(4,-43,14,10)}if(n.tattoo){ctx.strokeStyle='#28314b';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-27,-5);ctx.lineTo(-37,26);ctx.moveTo(27,-5);ctx.lineTo(37,26);ctx.stroke()}ctx.fillStyle='#111';ctx.fillRect(-8,-37,4,4);ctx.fillRect(8,-37,4,4);ctx.fillStyle='#fff';ctx.font='14px system-ui';ctx.textAlign='center';ctx.fillText(n.name,0,66);ctx.restore()}
   drawCat(ctx,p){ctx.save();ctx.translate(p.x,p.y);ctx.scale(p.dir,1);let w=Math.sin(p.walk)*4;ctx.fillStyle='#0004';ctx.beginPath();ctx.ellipse(0,24,34,12,0,0,7);ctx.fill();ctx.fillStyle='#f1842d';ctx.strokeStyle='#7a3b16';ctx.lineWidth=3;ctx.beginPath();ctx.ellipse(0,0,35,24,0,0,7);ctx.fill();ctx.stroke();ctx.beginPath();ctx.arc(28,-18,24,0,7);ctx.fill();ctx.stroke();ctx.beginPath();ctx.moveTo(12,-36);ctx.lineTo(18,-62);ctx.lineTo(30,-36);ctx.moveTo(36,-36);ctx.lineTo(50,-60);ctx.lineTo(52,-30);ctx.fill();ctx.stroke();ctx.strokeStyle='#7a3b16';ctx.lineWidth=8;ctx.beginPath();ctx.moveTo(-30,-2);ctx.quadraticCurveTo(-62,-38,-34,-54+w);ctx.stroke();ctx.fillStyle='#6cff93';ctx.beginPath();ctx.arc(22,-21,4,0,7);ctx.arc(38,-21,4,0,7);ctx.fill();ctx.strokeStyle='#7a3b16';ctx.lineWidth=2;for(let i=0;i<3;i++){ctx.beginPath();ctx.moveTo(8+i*10,-4);ctx.lineTo(18+i*8,5);ctx.stroke()}if(p.meowTimer>0){ctx.fillStyle='#fff8';ctx.font='22px system-ui';ctx.fillText('Мяу!',44,-54)}ctx.restore()}
   drawFireflies(ctx){if(game.world.time!=='вечер'&&game.world.time!=='ночь')return;for(const f of game.world.fireflies){ctx.fillStyle=`rgba(255,230,120,${.35+.45*Math.sin(f.a)})`;ctx.beginPath();ctx.arc(f.x,f.y,3+Math.sin(f.a)*2,0,7);ctx.fill()}}
@@ -369,7 +432,7 @@ class Game{
     if(this.input.keys.q){this.ui.showQuests();this.input.keys.q=false}
     if(this.input.keys.escape){this.ui.showMenu(true);this.input.keys.escape=false}
   }
-  canSeeLockedItem(it){if(it.id==='greenhouseKey')return this.npcs.every(n=>n.friend>=1);if(it.id==='sunbell')return this.inv.has('ключ от теплицы');return true}
+  canSeeLockedItem(it){if(it.id==='greenhouseKey')return this.npcs.every(n=>n.friend>=1);if(it.id==='sunbell')return this.inv.hasId('greenhouseKey')||this.inv.hasName('ключ от теплицы');return true}
   unlockByQuest(id){
     if(id==='q7'){this.world.unlockedZones.push('Лесная тропа','Поляна');this.toast('Открыта поляна')}
     if(id==='q11'){this.world.unlockedZones.push('Старый забор','Крыша','Тайная тропа')}
@@ -378,7 +441,7 @@ class Game{
     if(id==='q19'){this.world.unlockedZones.push('Теплица')}
   }
   nearestNPC(){return this.npcs.filter(n=>n.active(this.world.time)).map(n=>({n,d:d2(this.player,n)})).sort((a,b)=>a.d-b.d)[0]}
-  nearestItem(){return this.world.items.filter(it=>!this.inv.items.includes(it.name)&&(!it.night||this.world.time==='ночь')&&(!it.locked||this.canSeeLockedItem(it))).map(it=>({it,d:d2(this.player,it)})).sort((a,b)=>a.d-b.d)[0]}
+  nearestItem(){return this.world.items.filter(it=>!this.inv.hasId(it.id)&&!this.inv.hasName(it.name)&&(!it.night||this.world.time==='ночь')&&(!it.locked||this.canSeeLockedItem(it))).map(it=>({it,d:d2(this.player,it)})).sort((a,b)=>a.d-b.d)[0]}
   tryInteract(){
     const zone=this.world.zoneAt(this.player);
     if(zone==='Пруд' && d2(this.player,{x:1600,y:1330})<160){this.mini.fishing();return}
@@ -388,13 +451,14 @@ class Game{
     if(zone==='Кошачий уголок'){this.ui.showUpgrades();return}
     this.toast('Рядом ничего нет')
   }
-  talk(n){
+  talk(n, fromInventory=false){
     if(n.name==='Игорь'&&this.world.time==='вечер'&&this.quest.done('q3')){this.mini.concert();return}
     if(n.name==='Настя'&&(this.world.time==='вечер'||this.world.time==='ночь')&&this.world.zoneAt(this.player)==='Поляна'){this.mini.fireflies();return}
     const q=this.quest.quests.find(q=>q.id===n.quest);
     if(q&&!q.done){
-      if(q.item&&this.inv.has(q.item)){this.quest.complete(q.id);n.friend=clamp(n.friend+1,0,3);this.ach.unlock('Друг '+n.name);this.ui.dialogue(n,`Спасибо, Рыжик! Теперь я тебе доверяю. ${n.line}`);return}
+      if(q.item&&(this.inv.hasId(q.item)||this.inv.hasName(q.item)||this.inv.hasName(n.item))){this.quest.complete(q.id);this.inv.removeById(q.item);n.friend=clamp(n.friend+1,0,3);this.ach.unlock('Друг '+n.name);this.ui.dialogue(n,`Спасибо, Рыжик! Ты отдал нужный предмет. Теперь я тебе доверяю. ${n.line}`);return}
       if(!q.item){this.quest.complete(q.id);n.friend=clamp(n.friend+1,0,3);this.ach.unlock('Друг '+n.name);this.ui.dialogue(n,`Ты справился. ${n.line}`);return}
+      this.ui.dialogue(n,`Мне нужен предмет: ${n.item||q.item}. Найди его и вернись ко мне.`);return
     }
     if(n.name==='Лёха'&&this.world.time==='вечер'&&this.npcs.filter(x=>x.friend>=1).length>=6){this.quest.complete('q18')}
     this.ui.dialogue(n,n.line)
