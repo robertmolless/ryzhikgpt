@@ -24,22 +24,93 @@ class TelegramBridge{
 }
 
 class AudioSystem{
-  constructor(){this.ctx=null;this.enabled=true}
-  init(){this.ctx ||= new (window.AudioContext||window.webkitAudioContext)()}
-  beep(f=440,d=.08,type='sine',v=.035){
-    if(!this.enabled)return; this.init();
-    const o=this.ctx.createOscillator(), g=this.ctx.createGain();
-    o.type=type; o.frequency.value=f; g.gain.value=v;
-    o.connect(g); g.connect(this.ctx.destination); o.start();
-    g.gain.exponentialRampToValueAtTime(.001,this.ctx.currentTime+d);
-    o.stop(this.ctx.currentTime+d);
+  constructor(){
+    this.ctx=null;
+    this.enabled=true;
+    this.musicStarted=false;
+    this.ambienceTimer=0;
   }
-  meow(){this.beep(650,.08,'sine',.06);setTimeout(()=>this.beep(460,.13,'triangle',.05),80)}
-  pickup(){this.beep(900,.08,'triangle',.05)}
-  quest(){this.beep(523,.1);setTimeout(()=>this.beep(784,.14),110);setTimeout(()=>this.beep(1046,.18),230)}
-  bad(){this.beep(180,.15,'sawtooth',.025)}
+  init(){
+    this.ctx ||= new (window.AudioContext||window.webkitAudioContext)();
+  }
+  tone(freq=440,dur=.08,type='sine',vol=.03){
+    if(!this.enabled)return;
+    this.init();
+    const o=this.ctx.createOscillator();
+    const g=this.ctx.createGain();
+    o.type=type;
+    o.frequency.value=freq;
+    g.gain.value=vol;
+    o.connect(g);
+    g.connect(this.ctx.destination);
+    o.start();
+    g.gain.exponentialRampToValueAtTime(.0001,this.ctx.currentTime+dur);
+    o.stop(this.ctx.currentTime+dur);
+  }
+  chord(notes=[440,660],dur=.3,type='triangle',vol=.015){
+    notes.forEach((n,i)=>setTimeout(()=>this.tone(n,dur,type,vol),i*40));
+  }
+  meow(){
+    this.tone(620,.08,'sine',.06);
+    setTimeout(()=>this.tone(470,.13,'triangle',.05),70);
+  }
+  pickup(){
+    this.chord([880,1174],.14,'triangle',.03);
+  }
+  quest(){
+    this.chord([523,659,784],.25,'triangle',.03);
+    setTimeout(()=>this.chord([784,1046],.4,'sine',.02),180);
+  }
+  bad(){
+    this.tone(180,.18,'sawtooth',.02);
+  }
+  footstep(){
+    this.tone(120,.03,'square',.008);
+  }
+  ui(){
+    this.tone(720,.04,'triangle',.02);
+  }
+  rain(){
+    this.tone(240,.05,'sawtooth',.004);
+  }
+  birds(){
+    this.tone(1400,.05,'triangle',.012);
+    setTimeout(()=>this.tone(1700,.04,'triangle',.01),50);
+  }
+  fireflies(){
+    this.tone(980,.03,'sine',.006);
+  }
+  startMusic(){
+    if(this.musicStarted)return;
+    this.musicStarted=true;
+    const loop=()=>{
+      if(!this.enabled)return;
+      const t=game.world?.time || 'день';
+      if(t==='утро'){
+        this.chord([392,523,659],1.8,'triangle',.012);
+      }else if(t==='день'){
+        this.chord([440,587,784],2,'sine',.01);
+      }else if(t==='вечер'){
+        this.chord([349,523,698],2.6,'triangle',.012);
+      }else{
+        this.chord([261,392,523],3.4,'sine',.008);
+      }
+      setTimeout(loop,4000);
+    };
+    loop();
+  }
+  update(dt){
+    this.ambienceTimer+=dt;
+    if(this.ambienceTimer>6){
+      this.ambienceTimer=0;
+      const w=game.world?.weather;
+      const t=game.world?.time;
+      if(w==='дождь')this.rain();
+      else if(t==='утро'||t==='день')this.birds();
+      else if(t==='вечер'||t==='ночь')this.fireflies();
+    }
+  }
 }
-
 class Input{
   constructor(){this.keys={};this.meow=false;
     addEventListener('keydown',e=>{this.keys[e.key.toLowerCase()]=true;if(e.key===' ')this.meow=true});
@@ -90,7 +161,13 @@ class Player{
   }
   update(dt,v){
     const len=Math.hypot(v.x,v.y), low=this.stats.energy<25?.65:1;
-    if(len>.05){this.x+=v.x*this.speed*low*dt;this.y+=v.y*this.speed*low*dt;this.dir=v.x<0?-1:v.x>0?1:this.dir;this.walk+=dt*10}
+    if(len>.05){
+      this.x+=v.x*this.speed*low*dt;
+      this.y+=v.y*this.speed*low*dt;
+      this.dir=v.x<0?-1:v.x>0?1:this.dir;
+      this.walk+=dt*10;
+      if(Math.floor(this.walk)%7===0 && game?.audio)game.audio.footstep();
+    }
     this.x=clamp(this.x,75,2260);this.y=clamp(this.y,110,1705);
     this.meowTimer=Math.max(0,this.meowTimer-dt);
     this.stats.satiety=clamp(this.stats.satiety-dt*.22,0,100);
@@ -167,6 +244,11 @@ class QuestSystem{
       ['q18','Вечер у костра','Собери 6 друзей и поговори с Лёхой вечером',null,'Лёха'],
       ['q19','Ключ от теплицы','Получи доверие 10 друзей и возьми ключ','greenhouseKey',null],
       ['q20','Солнечный колокольчик','Открой теплицу и найди Солнечный колокольчик','sunbell',null],
+      ['q21','Ночной чай','Вечером поговори с Лёхой на крыльце',null,'Лёха'],
+      ['q22','Дождливый вечер','Поговори с Настей во время дождя',null,'Настя'],
+      ['q23','Музыкальный двор','Сыграй концерт с Игорем 2 раза',null,'Игорь'],
+      ['q24','Свет фонаря','Посети двор ночью после ремонта фонаря',null,'Кристина'],
+      ['q25','Большой уют','Купи 4 улучшения кошачьего уголка',null,null],
     ];
     this.quests=qs.map((q,i)=>({id:q[0],title:q[1],hint:q[2],item:q[3],npc:q[4],done:false,order:i+1}));
   }
@@ -233,6 +315,7 @@ class UpgradeSystem{
     if(game.player.stats.fame<u.cost){game.toast('Не хватает кошачьей славы');game.audio.bad();return}
     game.player.stats.fame-=u.cost; this.bought.push(id); game.toast(`Улучшение: ${u.name}`);
     if(id==='bowl')game.quest.complete('q12');
+    if(this.bought.length>=4)game.quest.complete('q25');
   }
 }
 
@@ -271,19 +354,27 @@ class MiniGameSystem{
       el.style.left=Math.random()*85+'%'; el.style.top=Math.random()*70+'%';
       el.onclick=()=>{score++;game.audio.meow();el.remove()};
       this.area.appendChild(el); setTimeout(()=>el.remove(),1200);
-      if(total>=12){clearInterval(timer);setTimeout(()=>{if(score>=7){game.quest.complete('q13');game.toast('Игорь доволен концертом!')}else game.toast('Попробуй концерт ещё раз');this.close()},1400)}
+      if(total>=12){clearInterval(timer);setTimeout(()=>{if(score>=7){
+          game.quest.complete('q13');
+          game.gameConcerts=(game.gameConcerts||0)+1;
+          if(game.gameConcerts>=2)game.quest.complete('q23');
+          game.toast('Игорь доволен концертом!')
+        }else game.toast('Попробуй концерт ещё раз');this.close()},1400)}
     },420);
   }
 }
 
 class AchievementSystem{
-  constructor(){this.list=['Первый мяу','Первый друг','Рыбак','Исследователь','Ночной кот','Мастер прыжков','Музыкальный кот','Друг Лёхи','Друг Игоря','Друг Насти','Друг Лизы','Друг Мага','Друг Сони','Друг Нэны','Друг Кристины','Друг Дани','Друг Прохора','Все друзья рядом','Тайна теплицы','Настоящий хозяин двора'];this.unlocked=[]}
+  constructor(){this.list=['Первый мяу','Первый друг','Рыбак','Исследователь','Ночной кот','Мастер прыжков','Музыкальный кот','Друг Лёхи','Друг Игоря','Друг Насти','Друг Лизы','Друг Мага','Друг Сони','Друг Нэны','Друг Кристины','Друг Дани','Друг Прохора','Все друзья рядом','Тайна теплицы','Настоящий хозяин двора','Музыкант двора','Король светлячков','Хранитель уюта'];this.unlocked=[]}
   unlock(a){if(!this.unlocked.includes(a)){this.unlocked.push(a);game.toast(`🏆 ${a}`)}}
   check(){
     const c=game.quest.quests.filter(q=>q.done).length;
     if(c>=5)this.unlock('Исследователь');
     if(game.world.time==='ночь')this.unlock('Ночной кот');
     if(game.quest.done('q20')){this.unlock('Тайна теплицы');this.unlock('Настоящий хозяин двора')}
+    if(game.quest.done('q23'))this.unlock('Музыкант двора');
+    if(game.quest.done('q4'))this.unlock('Король светлячков');
+    if(game.quest.done('q25'))this.unlock('Хранитель уюта')
     if(game.npcs.every(n=>n.friend>=1))this.unlock('Все друзья рядом');
   }
 }
@@ -420,11 +511,11 @@ class Game{
     new NPC({name:'Даня',x:650,y:920,color:'#5863cc',hair:'#3b2720',glasses:true,times:['утро','день','вечер'],quest:'q10',item:'пуговица',line:'Пуговица? Из неё можно сделать игрушку, отвечаю.'}),
     new NPC({name:'Прохор',x:1750,y:1030,color:'#8b4534',hair:'#2b1b10',tattoo:true,times:['утро','день','вечер'],quest:'q11',line:'Забор сам себя не починит. Но кот с характером — уже полдела.'})
   ]}
-  start(load=false,fresh=false){if(load)this.save.load();this.paused=false;this.ui.hideMenu();this.mobile.show();$('topHud').classList.remove('hidden');$('questHud').classList.remove('hidden');this.toast(fresh?'Новая игра началась':'Добро пожаловать обратно')}
+  start(load=false,fresh=false){if(load)this.save.load();this.paused=false;this.ui.hideMenu();this.mobile.show();$('topHud').classList.remove('hidden');$('questHud').classList.remove('hidden');this.audio.startMusic();this.toast(fresh?'Новая игра началась':'Добро пожаловать обратно')}
   loop(t){const dt=Math.min(.05,(t-this.last)/1000);this.last=t;if(!this.paused)this.update(dt);this.renderer.render();this.ui.update();requestAnimationFrame(tt=>this.loop(tt))}
   update(dt){
     let v=this.input.vector();if(Math.hypot(this.mobile.vec.x,this.mobile.vec.y)>.05)v=this.mobile.vec;
-    this.player.update(dt,v);this.world.update(dt);this.ach.check();
+    this.player.update(dt,v);this.world.update(dt);this.audio.update(dt);this.ach.check();
     if(this.input.meow){this.meow();this.input.meow=false}
     if(this.input.keys.e){this.tryInteract();this.input.keys.e=false}
     if(this.input.keys.i){this.ui.showInventory();this.input.keys.i=false}
@@ -461,6 +552,9 @@ class Game{
       this.ui.dialogue(n,`Мне нужен предмет: ${n.item||q.item}. Найди его и вернись ко мне.`);return
     }
     if(n.name==='Лёха'&&this.world.time==='вечер'&&this.npcs.filter(x=>x.friend>=1).length>=6){this.quest.complete('q18')}
+    if(n.name==='Лёха'&&game.world.time==='вечер'){this.quest.complete('q21')}
+    if(n.name==='Настя'&&game.world.weather==='дождь'){this.quest.complete('q22')}
+    if(n.name==='Кристина'&&game.world.time==='ночь'&&game.quest.done('q9')){this.quest.complete('q24')}
     this.ui.dialogue(n,n.line)
   }
   meow(){this.player.meowTimer=.9;this.audio.meow();this.ach.unlock('Первый мяу');this.player.stats.mood=clamp(this.player.stats.mood+2,0,100)}
